@@ -277,6 +277,11 @@ func (config *Config) GetMetricData(mPos, tPos int) []MetricRecord {
 	md, err := config.Tenants[tPos].GetMetricRows(rows)
 	// if err = rows.Err(); err != nil {
 	if err != nil {
+		log.WithFields(log.Fields{
+			"metric": config.Metrics[mPos].Name,
+			"tenant": config.Tenants[tPos].Name,
+			"error":  err,
+		}).Error("Can't get sql result for metric")
 		return nil
 	}
 	return md
@@ -335,7 +340,7 @@ func (tenant *TenantInfo) GetMetricRows(rows *sql.Rows) ([]MetricRecord, error) 
 	default:
 	}
 
-	values := make([]sql.RawBytes, len(cols))
+	values := make([]PlainData, len(cols))
 	scanArgs := make([]interface{}, len(values))
 	for i := range values {
 		scanArgs[i] = &values[i]

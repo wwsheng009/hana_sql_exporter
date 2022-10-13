@@ -17,6 +17,8 @@ package main
 import (
 	"github.com/ulranh/hana_sql_exporter/cmd"
 
+	"os"
+
 	log "github.com/sirupsen/logrus"
 )
 
@@ -28,6 +30,13 @@ func main() {
 		FullTimestamp:   true,
 		TimestampFormat: "02-01-2006 15:04:05",
 	})
+	f, err := os.OpenFile("log.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatalf("error opening file: %v", err)
+	}
+	defer f.Close()
+
+	log.SetOutput(f)
 
 	cmd.Execute()
 }
