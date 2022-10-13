@@ -19,6 +19,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -76,6 +77,18 @@ var webCmd = &cobra.Command{
 			exit("Problem with port flag: ", err)
 		}
 
+		logfile, err := cmd.Flags().GetString("logfile")
+		if err != nil {
+			exit("Problem with log file: ", err)
+		}
+
+		f, err := os.OpenFile(logfile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+		if err != nil {
+			exit("error opening file: %v", err)
+		}
+		defer f.Close()
+
+		log.SetOutput(f)
 		// set data func
 		config.DataFunc = config.GetMetricData
 
@@ -91,6 +104,7 @@ func init() {
 
 	webCmd.PersistentFlags().UintP("timeout", "t", 5, "scrape timeout of the hana_sql_exporter in seconds.")
 	webCmd.PersistentFlags().StringP("port", "p", "9658", "port, the hana_sql_exporter listens to.")
+	webCmd.PersistentFlags().StringP("logfile", "l", "log.log", "logfile, the logfile location")
 }
 
 // create new collector
