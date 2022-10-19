@@ -67,28 +67,44 @@ var webCmd = &cobra.Command{
 		if err != nil {
 			exit("Can't handle config file: ", err)
 		}
-
-		config.Timeout, err = cmd.Flags().GetUint("timeout")
-		if err != nil {
-			exit("Problem with timeout flag: ", err)
-		}
-		config.port, err = cmd.Flags().GetString("port")
-		if err != nil {
-			exit("Problem with port flag: ", err)
+		if config.Timeout == 0 {
+			config.Timeout, err = cmd.Flags().GetUint("timeout")
+			if err != nil {
+				exit("Problem with timeout flag: ", err)
+			}
 		}
 
-		logfile, err := cmd.Flags().GetString("logfile")
-		if err != nil {
-			exit("Problem with log file: ", err)
+		if config.port == "" {
+			config.port, err = cmd.Flags().GetString("port")
+			if err != nil {
+				exit("Problem with port flag: ", err)
+			}
 		}
 
-		f, err := os.OpenFile(logfile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-		if err != nil {
-			exit("error opening file: %v", err)
+		if config.LogLevel == "" {
+			config.LogLevel, err = cmd.Flags().GetString("log-level")
+			if err != nil {
+				exit("Problem with log level: ", err)
+			}
 		}
-		defer f.Close()
 
-		log.SetOutput(f)
+		SetLogLevel(config.LogLevel)
+		if config.LogFile == "" {
+			config.LogFile, err = cmd.Flags().GetString("log-file")
+			if err != nil {
+				exit("Problem with log file: ", err)
+			}
+		}
+
+		if config.LogFile != "" {
+			f, err := os.OpenFile(config.LogFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+			if err != nil {
+				exit("error opening file: %v", err)
+			}
+
+			log.SetOutput(f)
+		}
+
 		// set data func
 		config.DataFunc = config.GetMetricData
 
@@ -104,7 +120,8 @@ func init() {
 
 	webCmd.PersistentFlags().UintP("timeout", "t", 5, "scrape timeout of the hana_sql_exporter in seconds.")
 	webCmd.PersistentFlags().StringP("port", "p", "9658", "port, the hana_sql_exporter listens to.")
-	webCmd.PersistentFlags().StringP("logfile", "l", "log.log", "logfile, the logfile location")
+	webCmd.PersistentFlags().StringP("log-file", "l", "log.log", "logfile, the logfile location")
+	webCmd.PersistentFlags().String("log-level", "info", "logfile, the log level")
 }
 
 // create new collector
@@ -163,10 +180,15 @@ func (config *Config) Web() error {
 	// start collector
 	c := newCollector(stats)
 	prometheus.MustRegister(c)
+	if !log.IsLevelEnabled(log.DebugLevel) {
+		prometheus.Unregister(prometheus.NewGoCollector())
+		prometheus.Unregister(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
+	}
+	handler := promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{})
 
 	// start http server
 	mux := http.NewServeMux()
-	mux.Handle("/metrics", promhttp.Handler())
+	mux.Handle("/metrics", handler)
 	mux.HandleFunc("/", RootHandler)
 
 	// Add the pprof routes
@@ -212,6 +234,7 @@ func (config *Config) CollectMetrics() []MetricData {
 		go func(mPos int) {
 
 			defer wg.Done()
+			//最终输出
 			metricsC <- MetricData{
 				Name:       config.Metrics[mPos].Name,
 				Help:       config.Metrics[mPos].Help,
@@ -288,7 +311,7 @@ func (config *Config) GetMetricData(mPos, tPos int) []MetricRecord {
 	}
 	defer rows.Close()
 
-	md, err := config.Tenants[tPos].GetMetricRows(rows)
+	md, err := config.Tenants[tPos].GetMetricRows(rows, config.Metrics[mPos].Labels)
 	// if err = rows.Err(); err != nil {
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -332,7 +355,13 @@ func (config *Config) GetSelection(mPos, tPos int) string {
 }
 
 // GetMetricRows - return the metric values
-func (tenant *TenantInfo) GetMetricRows(rows *sql.Rows) ([]MetricRecord, error) {
+func (tenant *TenantInfo) GetMetricRows(rows *sql.Rows, labels []string) ([]MetricRecord, error) {
+
+	label_search := ""
+	if len(labels) > 0 {
+		label_search = low(strings.Join(labels, ","))
+
+	}
 
 	cols, err := rows.Columns()
 	if err != nil {
@@ -386,9 +415,15 @@ func (tenant *TenantInfo) GetMetricRows(rows *sql.Rows) ([]MetricRecord, error) 
 					return nil, errors.Wrap(err, "GetMetricRows(ParseFloat - first column cannot be converted to float64)")
 				}
 			} else {
-				data.Labels = append(data.Labels, low(cols[i]))
-				data.LabelValues = append(data.LabelValues, low(strings.Join(strings.Split(string(colval), " "), "_")))
-
+				if len(labels) > 0 {
+					if strings.Contains(label_search, low(cols[i])) {
+						data.Labels = append(data.Labels, low(cols[i]))
+						data.LabelValues = append(data.LabelValues, low(strings.Join(strings.Split(string(colval), " "), "_")))
+					}
+				} else {
+					data.Labels = append(data.Labels, low(cols[i]))
+					data.LabelValues = append(data.LabelValues, low(strings.Join(strings.Split(string(colval), " "), "_")))
+				}
 			}
 		}
 		md = append(md, data)

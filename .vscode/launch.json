@@ -9,8 +9,8 @@
             "type": "go",
             "request": "launch",
             "mode": "auto",
-            "program": "${fileDirname}",
-            "args": ["web","--config","/data/exporter/hana_sql_exporter/hana_sql_exporter1.toml","--logfile","/tmp/hana_sql_exporter.log"]
+            "program": "main.go",
+            "args": ["web","--config","hana_sql_exporter.toml"]
         }
     ]
 }

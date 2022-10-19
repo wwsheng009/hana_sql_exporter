@@ -105,7 +105,7 @@ func Test_GetMetricRows(t *testing.T) {
 
 	// rows.Columns
 	rows := &sql.Rows{}
-	_, err := ti.GetMetricRows(rows)
+	_, err := ti.GetMetricRows(rows, []string{})
 	assert.NotNil(err)
 }
 

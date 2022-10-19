@@ -48,6 +48,7 @@ type MetricInfo struct {
 	MetricType   string
 	TagFilter    []string
 	SchemaFilter []string
+	Labels       []string
 	SQL          string
 }
 
@@ -59,6 +60,8 @@ type Config struct {
 	DataFunc func(mPos, tPos int) []MetricRecord
 	Timeout  uint
 	port     string
+	LogLevel string `mapstructure:"log-level"`
+	LogFile  string `mapstructure:"log-file"`
 }
 
 var cfgFile string
