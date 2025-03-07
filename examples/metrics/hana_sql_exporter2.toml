@@ -1,0 +1,322 @@
+
+log-level = "debug"
+
+[[metrics]]
+  Help = "Status of last hana backup."
+  MetricType = "gauge"
+  Name = "hanadb_backup_status"
+  SQL = "select (case when state_name = 'successful' then 0 when state_name = 'running' then 1 else -1 end), entry_type_name as type from <SCHEMA>.m_backup_catalog where entry_id in (select max(entry_id) from m_backup_catalog group by entry_type_name)"
+  SchemaFilter = ["sys"]
+  TagFilter = []
+  VersionFilter = ""
+
+[[metrics]]
+  Help = "Hana table locks."
+  MetricType = "gauge"
+  Name = "hanadb_table_locks"
+  SQL = "select count(*) from <SCHEMA>.m_table_locks"
+  SchemaFilter = ["sys"]
+  TagFilter = []
+
+[[metrics]]
+  Help = "Hana blocked transactions."
+  MetricType = "gauge"
+  Name = "hanadb_blocked_transactions"
+  SQL = "select count(*) from <SCHEMA>.m_blocked_transactions"
+  SchemaFilter = ["sys"]
+  TagFilter = []
+
+[[metrics]]
+  Help = "Hana - allocated rowstore size"
+  MetricType = "gauge"
+  Name = "hanadb_allocated_rowstore_size"
+  SQL = "select allocated_size,port from <SCHEMA>.m_rs_memory where category='TABLE'"
+  SchemaFilter = ["sys"]
+  TagFilter = []
+
+[[metrics]]
+  Help = "Active Hana connections per service"
+  MetricType = "gauge"
+  Name = "hanadb_active_connections"
+  SQL = "select COUNT(IFNULL(C.CONNECTION_STATUS, 'IDLE')) as connections, S.service_name as service FROM <SCHEMA>.M_CONNECTIONS C inner join <SCHEMA>.M_SERVICES S on C.PORT = S.PORT WHERE C.LOGICAL_CONNECTION_ID = C.CONNECTION_ID AND C.OWN = 'FALSE' group by S.service_name"
+  SchemaFilter = ["sys"]
+  TagFilter = []
+
+[[metrics]]
+  Help = "Check if hana db tenant is active"
+  MetricType = "gauge"
+  Name = "hanadb_active_status"
+  SQL = "select top 1 (case when active_status = 'YES' then 1 else -1 end), database_name from <SCHEMA>.m_databases"
+  SchemaFilter = ["sys"]
+  TagFilter = []
+
+[[metrics]]
+  Help = "SAP orders of the current day separated in types"
+  MetricType = "counter"
+  Name = "hanadb_orders_day_total"
+  SQL = "select sum(1),auart from <SCHEMA>.vbak where erdat = CURRENT_UTCDATE group by auart"
+  SchemaFilter = ["SAPHANADB","sapabap","sapewm"]
+  TagFilter = ["abap","erp"]
+
+[[metrics]]
+  Help = "SAP new orders of the current day separated in sales units"
+  MetricType = "counter"
+  Name = "hanadb_new_orders_day_total"
+  SQL = "select sum(cast(netwr as double)),waerk,vkorg from <SCHEMA>.vbak where erdat = CURRENT_UTCDATE group by waerk,vkorg"
+  SchemaFilter = ["SAPHANADB","sapabap","sapewm"]
+  TagFilter = ["abap","erp"]
+
+[[metrics]]
+  Help = "SMQ1 - Hanging Outbound Queues"
+  MetricType = "gauge"
+  Name = "hanadb_smq1_hanging_queues"
+  SQL = "select count(*) from <SCHEMA>.trfcqout where qstate not in ('READ','READY')"
+  SchemaFilter = ["SAPHANADB","sapabap","sapewm"]
+  TagFilter = ["abap"]
+
+[[metrics]]
+  Help = "Oldest Backup found in backup_catalog."
+  MetricType = "gauge"
+  Name = "hanadb_oldest_backup_days"
+  SchemaFilter = ["sys"]
+  Sql = "SELECT DAYS_BETWEEN(MIN(SYS_START_TIME), CURRENT_TIMESTAMP) OLDEST_BACKUP_DAYS FROM <SCHEMA>.M_BACKUP_CATALOG"
+  TagFilter = []
+
+[[metrics]]
+  Help = "Hana database version."
+  MetricType = "gauge"
+  Name = "hanadb_version"
+  SchemaFilter = ["sys"]
+  Sql = "select top 1 DAYS_BETWEEN(START_TIME, CURRENT_TIMESTAMP) as days, version from <SCHEMA>.M_DATABASE"
+  TagFilter = []
+
+[[metrics]]
+  Help = "Sap jobs with status cancelled/aborted (today)"
+  MetricType = "counter"
+  Name = "hanadb_cancelled_jobs"
+  SchemaFilter = ["SAPHANADB","sapabap","sapewm"]
+  Sql = "select count(*) from <SCHEMA>.tbtco where enddate=current_utcdate and status='A'"
+  TagFilter = ["abap"]
+
+[[metrics]]
+  Help = "Sap jobs with status completed (today)"
+  MetricType = "counter"
+  Name = "hanadb_completed_jobs"
+  SchemaFilter = ["SAPHANADB","sapabap","sapewm"]
+  Sql = "select count(*) from <SCHEMA>.tbtco where enddate=current_utcdate and status='F'"
+  TagFilter = ["abap"]
+
+[[metrics]]
+  Help = "Sap jobs with status active"
+  MetricType = "gauge"
+  Name = "hanadb_active_jobs"
+  SchemaFilter = ["SAPHANADB","sapabap","sapewm"]
+  Sql = "select count(*) from <SCHEMA>.tbtco where status='R'"
+  TagFilter = ["abap"]
+
+[[metrics]]
+  Help = "Sap jobs with status ready"
+  MetricType = "gauge"
+  Name = "hanadb_ready_jobs"
+  SchemaFilter = ["SAPHANADB","sapabap","sapewm"]
+  Sql = "select count(*) from <SCHEMA>.tbtco where status='Y'"
+  TagFilter = ["abap"]
+
+
+[[queries]]
+  SQL = "SELECT host, ROUND(SUM(memory_size_in_total)/1024/1024) column_tables_used_mb FROM sys.m_cs_tables GROUP BY host"
+  SchemaFilter = ["sys"]
+  VersionFilter = ">=1.0.0 <=3.0.0"
+  TagFilter = []
+
+  [[queries.Metrics]]
+    Help = "Column tables total memory used in MB"
+    Labels = ["host"]
+    MetricType = "gauge"
+    Name = "hanadb_column_tables_used_memory"
+    ValueColumn = "column_tables_used_mb"
+
+[[queries]]
+  SQL = "SELECT host, schema_name, ROUND(SUM(memory_size_in_total)/1024/1024) schema_memory_used_mb FROM sys.m_cs_tables GROUP BY host, schema_name"
+  SchemaFilter = ["sys"]
+  VersionFilter = ">=1.0.0"
+  TagFilter = []
+
+  [[queries.Metrics]]
+    Help = "Total used memory by schema in MB"
+    Labels = ["host", "schema_name"]
+    MetricType = "gauge"
+    Name = "hanadb_schema_used_memory"
+    ValueColumn = "schema_memory_used_mb"
+
+[[queries]]
+  SQL = "SELECT MAX(TIMESTAMP) TIMESTAMP, HOST, MEASURED_ELEMENT_NAME CORE, SUM(MAP(CAPTION, 'User Time', TO_NUMBER(VALUE), 0)) USER_PCT, SUM(MAP(CAPTION, 'System Time', TO_NUMBER(VALUE), 0)) SYSTEM_PCT, SUM(MAP(CAPTION, 'Wait Time', TO_NUMBER(VALUE), 0)) WAITIO_PCT, SUM(MAP(CAPTION, 'Idle Time', 0, TO_NUMBER(VALUE))) BUSY_PCT, SUM(MAP(CAPTION, 'Idle Time', TO_NUMBER(VALUE), 0)) IDLE_PCT FROM sys.M_HOST_AGENT_METRICS WHERE MEASURED_ELEMENT_TYPE = 'Processor' GROUP BY HOST, MEASURED_ELEMENT_NAME"
+  SchemaFilter = ["sys"]
+  TagFilter = []
+
+  [[queries.Metrics]]
+    Help = "Percentage of CPU time spent by HANA DB in user space, over the last minute (in seconds)"
+    Labels = ["host", "core"]
+    MetricType = "gauge"
+    Name = "hanadb_cpu_user"
+    ValueColumn = "user_pct"
+
+  [[queries.Metrics]]
+    Help = "Percentage of CPU time spent by HANA DB in Kernel space, over the last minute (in seconds)"
+    Labels = ["host", "core"]
+    MetricType = "gauge"
+    Name = "hanadb_cpu_system"
+    ValueColumn = "system_pct"
+
+  [[queries.Metrics]]
+    Help = "Percentage of CPU time spent by HANA DB in IO mode, over the last minute (in seconds)"
+    Labels = ["host", "core"]
+    MetricType = "gauge"
+    Name = "hanadb_cpu_waitio"
+    ValueColumn = "waitio_pct"
+
+  [[queries.Metrics]]
+    Help = "Percentage of CPU time spent by HANA DB, over the last minute (in seconds)"
+    Labels = ["host", "core"]
+    MetricType = "gauge"
+    Name = "hanadb_cpu_busy"
+    ValueColumn = "busy_pct"
+
+  [[queries.Metrics]]
+    Help = "Percentage of CPU time not spent by HANA DB, over the last minute (in seconds)"
+    Labels = ["host", "core"]
+    MetricType = "gauge"
+    Name = "hanadb_cpu_idle"
+    ValueColumn = "idle_pct"
+
+[[queries]]
+  SQL = "SELECT MAX(timestamp) timestamp, host, measured_element_name interface, MAX(MAP(caption, 'Collision Rate', TO_NUMBER(value), 0)) coll_per_s, MAX(MAP(caption, 'Receive Rate', TO_NUMBER(value), 0)) recv_kb_per_s, MAX(MAP(caption, 'Transmit Rate', TO_NUMBER(value), 0)) trans_kb_per_s,MAX(MAP(caption, 'Packet Receive Rate', TO_NUMBER(value), 0)) recv_pack_per_s, MAX(MAP(caption, 'Packet Transmit Rate', TO_NUMBER(value), 0)) trans_pack_per_s, MAX(MAP(caption, 'Receive Error Rate', TO_NUMBER(value), 0)) recv_err_per_s, MAX(MAP(caption, 'Transmit Error Rate', TO_NUMBER(value), 0)) trans_err_per_s FROM sys.m_host_agent_metrics WHERE measured_element_type = 'NetworkPort' GROUP BY host, measured_element_name"
+  SchemaFilter = ["sys"]
+  TagFilter = []
+
+  [[queries.Metrics]]
+    Help = "Network collisions per second"
+    Labels = ["host", "interface"]
+    MetricType = "gauge"
+    Name = "hanadb_network_collisions_per"
+    ValueColumn = "coll_per_s"
+
+  [[queries.Metrics]]
+    Help = "Network received rate in kilobytes per seconds"
+    Labels = ["host", "interface"]
+    MetricType = "gauge"
+    Name = "hanadb_network_receive_rate_kb_per"
+    ValueColumn = "recv_kb_per_s"
+
+  [[queries.Metrics]]
+    Help = "Network transmission rate in kilobytes per seconds"
+    Labels = ["host", "interface"]
+    MetricType = "gauge"
+    Name = "hanadb_network_transmission_rate_kb_per"
+    ValueColumn = "trans_kb_per_s"
+
+  [[queries.Metrics]]
+    Help = "Network receive rate in requests (packets) per seconds"
+    Labels = ["host", "interface"]
+    MetricType = "gauge"
+    Name = "hanadb_network_receive_requests_per"
+    ValueColumn = "recv_pack_per_s"
+
+  [[queries.Metrics]]
+    Help = "Network transmission rate in requests (packets) per seconds"
+    Labels = ["host", "interface"]
+    MetricType = "gauge"
+    Name = "hanadb_network_transmission_rate_requests_per"
+    ValueColumn = "trans_pack_per_s"
+
+  [[queries.Metrics]]
+    Help = "Network receive rate of errors per seconds"
+    Labels = ["host", "interface"]
+    MetricType = "gauge"
+    Name = "hanadb_network_receive_rate_errors_per"
+    ValueColumn = "recv_err_per_s"
+
+  [[queries.Metrics]]
+    Help = "Network transmission rate of errors per seconds"
+    Labels = ["host", "interface"]
+    MetricType = "gauge"
+    Name = "hanadb_network_transmission_rate_errors_per"
+    ValueColumn = "trans_err_per_s"
+
+[[queries]]
+  SQL = "SELECT TOP 10 host, LPAD(port, 5) port, SUBSTRING(REPLACE_REGEXPR('\n' IN statement_string WITH ' ' OCCURRENCE ALL), 1,30) sql_string, statement_hash sql_hash, execution_count, total_execution_time + total_preparation_time total_elapsed_time FROM sys.m_sql_plan_cache ORDER BY total_elapsed_time, execution_count DESC"
+  SchemaFilter = ["sys"]
+  TagFilter = []
+  Disabled = true
+
+  [[queries.Metrics]]
+    Help = "Top statements time consumers. Sum of the time consumed in all executions in Microseconds"
+    Labels = ["host", "port", "sql_string", "sql_hash"]
+    MetricType = "gauge"
+    Name = "hanadb_sql_top_time_consumers_elapsed"
+    ValueColumn = "total_elapsed_time"
+
+  [[queries.Metrics]]
+    Help = "Top statements time consumers. Number of total executions of the SQL Statement"
+    Labels = ["host", "port", "sql_string", "sql_hash"]
+    MetricType = "gauge"
+    Name = "hanadb_sql_top_time_consumers_count"
+    ValueColumn = "execution_count"
+
+[[metrics]]
+  Help = "HANA database metadata information including SID, instance number, database name and version."
+  MetricType = "gauge"
+  Name = "hanadb_metadata_info"
+  SQL = "SELECT (select top 1 DAYS_BETWEEN(START_TIME, CURRENT_TIMESTAMP) from <SCHEMA>.M_DATABASE) days, (SELECT value FROM <SCHEMA>.M_SYSTEM_OVERVIEW WHERE section = 'System' AND name = 'Instance ID') SID, (SELECT value FROM <SCHEMA>.M_SYSTEM_OVERVIEW WHERE section = 'System' AND name = 'Instance Number') INSNR, m.database_name, m.version FROM <SCHEMA>.m_database m"
+  SchemaFilter = ["sys"]
+  TagFilter = []
+  Disabled = true
+
+# 需要添加连接数指标
+[[queries]]
+  SQL = "SELECT COUNT(*) as total_count, connection_status, connection_type FROM <SCHEMA>.M_CONNECTIONS GROUP BY connection_status, connection_type"
+  SchemaFilter = ["sys"]
+  
+  [[queries.Metrics]]
+    Name = "hanadb_connections_total_count"
+    Help = "Total number of database connections by status and type"
+    MetricType = "gauge"
+    Labels = ["connection_status", "connection_type"]
+    ValueColumn = "total_count"
+
+# 需要添加文件系统指标
+[[queries]]
+  SQL = """
+    SELECT
+      DISTINCT
+      D.HOST,
+      D.MOUNT_PATH AS PATH,
+      D.USED_SIZE / 1024 AS used_size_mb,
+      D.TOTAL_SIZE / 1024 AS total_size_mb
+    FROM
+      M_DISKS D
+      JOIN M_DISK_USAGE DU ON D.HOST = DU.HOST
+    WHERE
+      D.USAGE_TYPE LIKE '%'
+  """
+  SchemaFilter = ["sys"]
+  
+  [[queries.Metrics]]
+    Name = "hanadb_disk_used_size_mb"
+    Help = "Used filesystem space in MB with extended dimensions"
+    MetricType = "gauge"
+    Labels = ["host", "path"]
+    ValueColumn = "used_size_mb"
+
+  [[queries.Metrics]]
+    Name = "hanadb_disk_total_size_mb"
+    Help = "Total filesystem space in MB with extended dimensions"
+    MetricType = "gauge"
+    Labels = ["host", "path", "usage_type"]
+    ValueColumn = "total_size_mb"
+    
+[[tenants]]
+  ConnStr = "172.18.3.30:30015"
+  Name = "HDB"
+  Tags = ["abap"]
+  User = "SAPHANADB"

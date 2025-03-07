@@ -1,0 +1,20 @@
+
+log-level = "debug"
+
+[[queries]]
+  SQL = "SELECT host, schema_name, ROUND(SUM(memory_size_in_total)/1024/1024) schema_memory_used_mb FROM sys.m_cs_tables GROUP BY host, schema_name"
+  SchemaFilter = ["sys"]
+  TagFilter = []
+
+  [[queries.Metrics]]
+    Help = "Total used memory by schema in MB"
+    Labels = ["host", "schema_name"]
+    MetricType = "gauge"
+    Name = "hanadb_schema_used_memory"
+    ValueColumn = "schema_memory_used_mb"
+
+[[tenants]]
+  ConnStr = "172.18.3.30:30015"
+  Name = "HDB"
+  Tags = ["abap"]
+  User = "SAPHANADB"
