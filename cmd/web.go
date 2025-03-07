@@ -655,21 +655,14 @@ func (tenant *TenantInfo) GetMetricRows(metricName string, rows [][]interface{},
 		}
 	}
 
-	// 创建通用接口切片用于扫描
-	values := make([]interface{}, len(cols))
-	for i := range values {
-		// 为每列创建一个通用接口
-		values[i] = new(interface{})
-	}
+	meta := tenant.Config.getSharedMetaData(tenant.Index)
 
 	var md []MetricRecord
 	for _, values := range rows {
-
 		data := MetricRecord{
-			Labels:      []string{"tenant", "usage", "schema"},
-			LabelValues: []string{low(tenant.Name), low(tenant.Usage), ""},
+			Labels:      append([]string{"tenant", "usage", "schema"}, meta.Labels...),
+			LabelValues: append([]string{low(tenant.Name), low(tenant.Usage), ""}, meta.LabelValues...),
 		}
-
 		for i := range values {
 			// 检查空值
 			if values[i] == nil || *(values[i].(*interface{})) == nil {
@@ -705,28 +698,48 @@ func (tenant *TenantInfo) GetMetricRows(metricName string, rows [][]interface{},
 						data.Value = fVal
 					} else {
 						data.Value = 0
-						if err != nil {
+						
 							log.WithFields(log.Fields{
 								"error":  err,
 								"type":   fmt.Sprintf("%T", v),
 								"value":  v,
 								"metric": metricName,
 							}).Warn("GetMetricRows: 不支持的值类型，使用默认值0")
-						}
+						
 					}
 				}
 			} else {
 				// 处理标签列
 				strVal := convertToString(*(values[i].(*interface{})))
-				if len(labels) > 0 {
-					if strings.Contains(label_search, low(cols[i])) {
-						data.Labels = append(data.Labels, low(cols[i]))
-						data.LabelValues = append(data.LabelValues, low(strings.Join(strings.Split(strVal, " "), "_")))
+					if len(labels) > 0 {
+						if strings.Contains(label_search, low(cols[i])) {
+							// 检查是否已存在该标签
+							labelExists := false
+							for _, existingLabel := range data.Labels {
+								if existingLabel == low(cols[i]) {
+									labelExists = true
+									break
+								}
+							}
+							if !labelExists {
+								data.Labels = append(data.Labels, low(cols[i]))
+								data.LabelValues = append(data.LabelValues, low(strings.Join(strings.Split(strVal, " "), "_")))
+							}
+						}
+					} else {
+						// 检查是否已存在该标签
+						labelExists := false
+						for _, existingLabel := range data.Labels {
+							if existingLabel == low(cols[i]) {
+								labelExists = true
+								break
+							}
+						}
+						if !labelExists {
+							data.Labels = append(data.Labels, low(cols[i]))
+							data.LabelValues = append(data.LabelValues, low(strings.Join(strings.Split(strVal, " "), "_")))
+						}
 					}
-				} else {
-					data.Labels = append(data.Labels, low(cols[i]))
-					data.LabelValues = append(data.LabelValues, low(strings.Join(strings.Split(strVal, " "), "_")))
-				}
 			}
 		}
 		md = append(md, data)
@@ -741,9 +754,9 @@ func (config *Config) prepare() ([]TenantInfo, error) {
 	var tenantsOk []TenantInfo
 
 	// 初始化版本缓存
-	config.versionMutex.Lock()
-	config.versionCache = make(map[int]string)
-	config.versionMutex.Unlock()
+	// config.versionMutex.Lock()
+	// config.versionCache = make(map[int]string)
+	// config.versionMutex.Unlock()
 
 	// adapt config.Metrics schema filter
 	config.AdaptSchemaFilter()
@@ -778,26 +791,34 @@ func (config *Config) prepare() ([]TenantInfo, error) {
 		}
 
 		// 获取并缓存版本信息
-		version, err := config.getHanaVersionFromDB(i)
+		// version, err := config.getHanaVersionFromDB(i)
+		// if err != nil {
+		// 	log.WithFields(log.Fields{
+		// 		"tenant": config.Tenants[i].Name,
+		// 		"error":  err,
+		// 	}).Error("获取数据库版本失败")
+		// 	continue
+		// }
+		err = config.retrieveMetadata(i)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"tenant": config.Tenants[i].Name,
 				"error":  err,
-			}).Error("获取数据库版本失败")
+			}).Error("获取数据库元数据失败")
 			continue
 		}
-
-		config.versionMutex.Lock()
-		config.versionCache[i] = version
-		config.versionMutex.Unlock()
+		// config.versionMutex.Lock()
+		// config.versionCache[i] = version
+		// config.versionMutex.Unlock()
 
 		log.WithFields(log.Fields{
 			"tenant":  config.Tenants[i].Name,
 			"usage":   config.Tenants[i].Usage,
 			"schemas": len(config.Tenants[i].Schemas),
-			"version": version,
-		}).Info("租户信息收集完成")
+		}).Info("租户元信息收集完成")
 
+		config.Tenants[i].Config = config
+		config.Tenants[i].Index = i
 		tenantsOk = append(tenantsOk, config.Tenants[i])
 	}
 
@@ -1143,26 +1164,26 @@ func (config *Config) GetQuerySelection(qPos, tPos int) string {
 // GetHanaVersion - 获取SAP HANA数据库版本
 func (config *Config) GetHanaVersion(tPos int) (string, error) {
 	// 从缓存中获取版本信息
-	config.versionMutex.RLock()
-	version, exists := config.versionCache[tPos]
-	config.versionMutex.RUnlock()
+	// config.versionMutex.RLock()
+	version := config.Tenants[tPos].Version
+	// config.versionMutex.RUnlock()
 
-	if !exists {
+	if version == "" {
 		return "", errors.New("version information not found in cache")
 	}
 
 	return version, nil
 }
 
-func (config *Config) getHanaVersionFromDB(tPos int) (string, error) {
-	row := config.Tenants[tPos].conn.QueryRow("SELECT value FROM SYS.M_HOST_INFORMATION where key = 'build_version'")
-	var version string
-	err := row.Scan(&version)
-	if err != nil {
-		return "", errors.Wrap(err, "getHanaVersionFromDB(Scan)")
-	}
-	return version, nil
-}
+// func (config *Config) getHanaVersionFromDB(tPos int) (string, error) {
+// 	row := config.Tenants[tPos].conn.QueryRow("SELECT value FROM SYS.M_HOST_INFORMATION where key = 'build_version'")
+// 	var version string
+// 	err := row.Scan(&version)
+// 	if err != nil {
+// 		return "", errors.Wrap(err, "getHanaVersionFromDB(Scan)")
+// 	}
+// 	return version, nil
+// }
 
 // CheckVersionRequirement - 检查版本是否满足要求
 func (config *Config) CheckVersionRequirement(version, requirement string) bool {
@@ -1282,3 +1303,42 @@ func convertToString(v interface{}) string {
 		return fmt.Sprintf("%v", value)
 	}
 }
+
+// retrieveMetadata 获取数据库元数据并填充到TenantInfo
+func (config *Config) retrieveMetadata(tId int) error {
+	query := `SELECT
+(SELECT value FROM M_SYSTEM_OVERVIEW WHERE section = 'System' AND name = 'Instance ID') SID,
+(SELECT value FROM M_SYSTEM_OVERVIEW WHERE section = 'System' AND name = 'Instance Number') INSNR,
+m.database_name,
+m.version
+FROM m_database m`
+
+	row := config.Tenants[tId].conn.QueryRow(query)
+	err := row.Scan(
+		&config.Tenants[tId].SID,
+		&config.Tenants[tId].InstanceNumber,
+		&config.Tenants[tId].DatabaseName,
+		&config.Tenants[tId].Version,
+	)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"tenant": config.Tenants[tId].Name,
+			"error":  err,
+		}).Error("获取数据库元数据失败")
+		return err
+	}
+	return nil
+}
+
+// 获取共享的元数据标签记录
+func (config *Config) getSharedMetaData(tId int) MetricRecord {
+	return MetricRecord{
+		Labels: []string{"sid", "insnr", "database_name"},
+		LabelValues: []string{
+			config.Tenants[tId].SID,
+			config.Tenants[tId].InstanceNumber,
+			config.Tenants[tId].DatabaseName,
+		},
+	}
+}
+

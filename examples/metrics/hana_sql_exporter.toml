@@ -160,9 +160,20 @@
     Labels = ["host", "port", "sql_string", "sql_hash"]
 
 [[Queries]]
-  SQL = "SELECT service_name, connection_status, COUNT(*) AS count FROM <SCHEMA>.M_CONNECTIONS GROUP BY service_name, connection_status"
-  TagFilter = []
+  SQL = "SELECT D.HOST, D.PATH, DU.USAGE_TYPE, D.USED_SIZE/1024 used_mb, D.TOTAL_SIZE/1024 total_mb FROM M_DISKS D JOIN M_DISK_USAGE DU ON D.HOST = DU.HOST"
   SchemaFilter = ["sys"]
+  
+  [[queries.Metrics]]
+    Name = "hdb_disk_used_size_mb"
+    Help = "Used filesystem space in MB with extended dimensions"
+    Labels = ["host", "path", "usage_type"]
+    ValueColumn = "used_mb"
+
+  [[queries.Metrics]]
+    Name = "hdb_disk_total_size_mb"
+    Help = "Total filesystem space in MB with extended dimensions"
+    Labels = ["host", "path", "usage_type"]
+    ValueColumn = "total_mb"
   
   [[Queries.Metrics]]
     Name = "hdb_connections_by_service_and_status"
