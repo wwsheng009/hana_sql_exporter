@@ -1,0 +1,10 @@
+[Unit]
+Description=SAP HANA SQL metrics exporter
+Documentation=https://github.com/wwsheng009/hana_sql_exporter
+
+[Service]
+Type=notify
+ExecStart=/opt/exporter/hana_sql_exporter/hana_sql_exporter web --config /opt/exporter/hana_sql_exporter/hana_sql_exporter.toml
+work
+[Install]
+WantedBy=multi-user.target

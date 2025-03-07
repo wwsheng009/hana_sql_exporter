@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	// _ "github.com/SAP/go-hdb/driver"
 	goHdbDriver "github.com/SAP/go-hdb/driver"
 	homedir "github.com/mitchellh/go-homedir"
 	"github.com/pkg/errors"

@@ -1,0 +1,51 @@
+name: Release
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version-file: "go.mod"
+
+      - name: Build
+        run: |
+          make all
+          cd build
+          gzip *
+
+      - name: Generate Release Notes
+        if: github.event.release
+        run: |
+          echo "## 构建信息" >> ${{ github.workspace }}-RELEASE_NOTES.md
+          echo "* 版本: $(git describe --tags --always --dirty)" >> ${{ github.workspace }}-RELEASE_NOTES.md
+          echo "* 构建时间: $(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> ${{ github.workspace }}-RELEASE_NOTES.md
+          echo "\n## 支持平台" >> ${{ github.workspace }}-RELEASE_NOTES.md
+          echo "* Linux (amd64, arm64)" >> ${{ github.workspace }}-RELEASE_NOTES.md
+          echo "* Windows (amd64, arm64)" >> ${{ github.workspace }}-RELEASE_NOTES.md
+          echo "* macOS (amd64, arm64)" >> ${{ github.workspace }}-RELEASE_NOTES.md
+
+      - name: Upload Release Assets
+        uses: softprops/action-gh-release@v1
+        if: github.event.release
+        with:
+          files: build/*.gz
+          body_path: ${{ github.workspace }}-RELEASE_NOTES.md
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hana_sql_exporter
+          path: build/*.gz
