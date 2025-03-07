@@ -53,6 +53,7 @@ The file contains a Tenants slice followed by a Metrics Slice:
   TagFilter = []
   SchemaFilter = [] # the sys schema will be added automatically
   SQL = "select (case when state_name = 'successful' then 0 when state_name = 'running' then 1 else -1 end) as val, entry_type_name as type from <SCHEMA>.m_backup_catalog where entry_id in (select max(entry_id) from m_backup_catalog group by entry_type_name)"
+  Disabled = false
 
 [[Metrics]]
   Name = "hdb_cancelled_jobs"
@@ -61,6 +62,33 @@ The file contains a Tenants slice followed by a Metrics Slice:
   TagFilter = ["abap"]
   SchemaFilter = ["sapabap1", "sapabap","sapewm"]
   SQL = "select count(*) from <SCHEMA>.tbtco where enddate=current_utcdate and status='A'"
+  VersionFilter = ">= 2.00.040"
+  Disabled = false
+
+# Multi-metric query configuration example
+[[Metrics]]
+  Name = "hdb_operation_metrics"
+  SQL = "SELECT operation_name, duration, error_code FROM <SCHEMA>.operations"
+  TagFilter = ["abap"]
+  SchemaFilter = ["sapabap1"]
+  VersionFilter = ">= 2.00.040"
+  Disabled = false
+
+  [[Metrics.Labels]]
+    Name = "operation"
+    ValueColumn = "operation_name"
+
+  [[Metrics.Values]]
+    Name = "hdb_operation_duration"
+    Help = "Operation duration in milliseconds"
+    MetricType = "gauge"
+    ValueColumn = "duration"
+
+  [[Metrics.Values]]
+    Name = "hdb_operation_errors"
+    Help = "Number of failed operations"
+    MetricType = "counter"
+    ValueColumn = "error_code"
 ```
 
 Below is a description of the tenant and metric struct fields:
@@ -84,6 +112,9 @@ Below is a description of the tenant and metric struct fields:
 | TagFilter    | string array | The metric will only be executed, if all values correspond with the existing tenant tags | TagFilter ["abap", "erp"] needs at least tenant Tags ["abap", "erp"] otherwise the metric will not be used |
 | SchemaFilter | string array | The metric will only be used, if the tenant user has one of schemas in SchemaFilter assigned. The first matching schema will be replaced with the <SCHEMA> placeholder of the select.  | ["sapabap1", "sapewm"] |
 | SQL          | string       | The select is responsible for the data retrieval. Conventionally the first column must represent the value of the metric. The following columns are used as labels and must be string values. The tenant name and the tenant usage are default labels for every metric and need not to be added in the select. | "select days_between(start_time, current_timestamp) as uptime, version from \<SCHEMA\>.m_database" (SCHEMA uppercase) |
+| VersionFilter | string | Version filter (supports format: ">= 2.00.048"), execute this metric only when the tenant database version meets the condition | ">= 2.00.048" |
+| ValueColumn   | string | Specifies the column name in the result set used for the metric value (used when SQL returns multiple numerical columns) | "uptime" |
+| Disabled      | bool   | When set to true, disables collection of this metric | false |
 
 #### Database passwords
 
@@ -148,4 +179,4 @@ The image below shows for example the duration of all complete data backups. Wit
  ![backups](/examples/images/backups.png)
 
 ## More Information
-* [Monitoring SAP and Hana Instances with Prometheus and Grafana](https://blogs.sap.com/2020/02/07/monitoring-sap-and-hana-instances-with-prometheus-and-grafana/) 
+* [Monitoring SAP and Hana Instances with Prometheus and Grafana](https://blogs.sap.com/2020/02/07/monitoring-sap-and-hana-instances-with-prometheus-and-grafana/)

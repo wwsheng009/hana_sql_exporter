@@ -427,6 +427,10 @@ func (config *Config) CollectMetric(mPos int) []MetricRecord {
 
 // GetMetricData - metric data for one tenant
 func (config *Config) GetMetricData(mPos, tPos int) []MetricRecord {
+	m := config.Metrics[mPos]
+	if m.Disabled {
+		return nil
+	}
 	start := time.Now()
 	logFields := log.Fields{
 		"metric": config.Metrics[mPos].Name,
@@ -966,6 +970,27 @@ func (config *Config) CollectQueryMetric(qPos int) []MetricData {
 
 // GetQueryMetricData - 为一个租户获取查询的多个指标数据
 func (config *Config) GetQueryMetricData(qPos, tPos int) []MetricData {
+	if config.Queries[qPos].Disabled {
+		return nil
+	}
+
+	// 检查所有子指标是否都被禁用
+	allDisabled := true
+	for _, metric := range config.Queries[qPos].Metrics {
+		if !metric.Disabled {
+			allDisabled = false
+			break
+		}
+	}
+	if allDisabled {
+		log.WithFields(log.Fields{
+			"query":   config.Queries[qPos].SQL,
+			"tenant":  config.Tenants[tPos].Name,
+			"metrics": len(config.Queries[qPos].Metrics),
+		}).Info("跳过执行查询，所有子指标已禁用")
+		return nil
+	}
+
 	start := time.Now()
 	logFields := log.Fields{
 		"query":  config.Queries[qPos].SQL,
@@ -1012,6 +1037,9 @@ func (config *Config) GetQueryMetricData(qPos, tPos int) []MetricData {
 		// 处理查询结果
 		var metricsData []MetricData
 		for _, metric := range config.Queries[qPos].Metrics {
+			if metric.Disabled {
+				continue
+			}
 			metricData := MetricData{
 				Name:       metric.Name,
 				Help:       metric.Help,

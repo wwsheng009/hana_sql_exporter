@@ -62,6 +62,30 @@ $ grant select on schema <schema> to <user>;
   TagFilter = ["abap"]
   SchemaFilter = ["sapabap1", "sapabap","sapewm"]
   SQL = "select count(*) from <SCHEMA>.tbtco where enddate=current_utcdate and status='A'"
+  VersionFilter = ">= 2.00.040"
+  Disabled = false
+
+# 多指标查询配置示例
+[[Queries]]
+  SQL = "SELECT operation_name, duration, error_code FROM <SCHEMA>.operations"
+  TagFilter = ["abap"]
+  SchemaFilter = ["sapabap1"]
+  VersionFilter = ">= 2.00.040"
+  Disabled = false
+
+  [[Queries.Metrics]]
+    Name = "hdb_operation_duration"
+    Help = "操作耗时（毫秒）"
+    MetricType = "gauge"
+    ValueColumn = "duration"
+    Labels = ["operation"]
+
+  [[Queries.Metrics]]
+    Name = "hdb_operation_errors"
+    Help = "失败操作数量"
+    MetricType = "counter"
+    ValueColumn = "error_code"
+    Labels = ["operation"]
 ```
 
 以下是租户和指标结构字段的说明：
@@ -85,6 +109,9 @@ $ grant select on schema <schema> to <user>;
 | TagFilter    | string array | 仅当所有值与现有租户标签相对应时，才会执行该指标 | TagFilter ["abap", "erp"] 需要租户至少有 Tags ["abap", "erp"]，否则该指标不会被使用 |
 | SchemaFilter | string array | 仅当租户用户具有 SchemaFilter 中的某个 schema 的权限时，才会使用该指标。第一个匹配的 schema 将替换 select 语句中的 <SCHEMA> 占位符 | ["sapabap1", "sapewm"] |
 | SQL          | string       | 该 select 语句负责数据检索。按照惯例，第一列必须表示指标的值。后续列用作标签，必须是字符串值。租户名称和租户用途是每个指标的默认标签，无需在 select 语句中添加 | "select days_between(start_time, current_timestamp) as uptime, version from \<SCHEMA\>.m_database" (SCHEMA 大写) |
+| VersionFilter | string | 版本过滤条件（支持格式：">= 2.00.048"），仅当租户数据库版本符合条件时执行该指标 | ">= 2.00.048" |
+| ValueColumn   | string | 指定结果集中用于指标值的列名（当SQL返回多列数值时使用） | "uptime" |
+| Disabled      | bool   | 当设为true时禁用该指标采集 | false |
 
 #### 数据库密码
 

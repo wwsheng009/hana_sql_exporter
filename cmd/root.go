@@ -52,8 +52,9 @@ type MetricInfo struct {
 	SchemaFilter  []string
 	Labels        []string
 	SQL           string
-	VersionFilter string // 版本过滤条件，支持范围配置，如">= 2.00.048"
+	VersionFilter string
 	ValueColumn   string
+	Disabled      bool // 新增Disabled字段
 }
 
 // QueryMetricInfo - 每个SQL查询中的单个指标定义
@@ -63,6 +64,7 @@ type QueryMetricInfo struct {
 	MetricType  string
 	ValueColumn string
 	Labels      []string
+	Disabled    bool
 }
 
 // QueryInfo - 查询定义，一个SQL对应多个指标
@@ -71,7 +73,8 @@ type QueryInfo struct {
 	TagFilter     []string
 	SchemaFilter  []string
 	Metrics       []QueryMetricInfo
-	VersionFilter string // 版本过滤条件，支持范围配置，如">= 2.00.048"
+	VersionFilter string
+	Disabled      bool // 新增Disabled字段
 }
 
 // Config struct with config file infos
