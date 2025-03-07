@@ -10,7 +10,11 @@
             "request": "launch",
             "mode": "auto",
             "program": "main.go",
-            "args": ["web","--config","hana_sql_exporter.toml"]
+            "args": [
+                "web",
+                "--config",
+                "test/hana_sql_exporter.toml"
+            ]
         }
     ]
 }

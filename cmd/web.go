@@ -18,11 +18,14 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"math/big"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/pkg/errors"
@@ -107,6 +110,7 @@ var webCmd = &cobra.Command{
 
 		// set data func
 		config.DataFunc = config.GetMetricData
+		config.QueryDataFunc = config.GetQueryMetricData
 
 		err = config.Web()
 		if err != nil {
@@ -118,10 +122,10 @@ var webCmd = &cobra.Command{
 func init() {
 	RootCmd.AddCommand(webCmd)
 
-	webCmd.PersistentFlags().UintP("timeout", "t", 5, "scrape timeout of the hana_sql_exporter in seconds.")
+	webCmd.PersistentFlags().UintP("timeout", "t", 30, "scrape timeout of the hana_sql_exporter in seconds.")
 	webCmd.PersistentFlags().StringP("port", "p", "9658", "port, the hana_sql_exporter listens to.")
 	webCmd.PersistentFlags().StringP("log-file", "l", "log.log", "logfile, the logfile location")
-	webCmd.PersistentFlags().String("log-level", "info", "logfile, the log level")
+	webCmd.PersistentFlags().String("log-level", "error", "logfile, the log level")
 }
 
 // create new collector
@@ -159,13 +163,29 @@ func (c *collector) Collect(ch chan<- prometheus.Metric) {
 	}
 }
 
+// HealthHandler - 健康检查接口
+func HealthHandler(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, "healthy")
+}
+
 // Web - start collector and web server
 func (config *Config) Web() error {
 	var err error
 
+	log.Info("开始初始化HANA SQL Exporter服务")
+
+	// 添加恢复机制
+	defer func() {
+		if r := recover(); r != nil {
+			log.WithField("panic", r).Error("服务发生严重错误，正在恢复")
+		}
+	}()
+
 	config.Tenants, err = config.prepare()
 	if err != nil {
-		exit("Preparation of tenants not possible: ", err)
+		log.WithError(err).Error("租户准备失败")
+		return errors.Wrap(err, "租户准备失败")
 	}
 
 	// close tenant connections at the end
@@ -173,44 +193,109 @@ func (config *Config) Web() error {
 		defer config.Tenants[i].conn.Close()
 	}
 
+	// 设置数据采集函数
+	config.DataFunc = config.GetMetricData
+	config.QueryDataFunc = config.GetQueryMetricData
+
 	stats := func() []MetricData {
-		return config.CollectMetrics()
+		start := time.Now()
+		log.Debug("开始收集指标数据")
+
+		// 使用带超时的上下文控制
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(config.Timeout)*time.Second)
+		defer cancel()
+
+		// 创建错误通道
+		// errChan := make(chan error, 1)
+
+		// 创建结果通道
+		resultChan := make(chan []MetricData, 1)
+
+		go func() {
+			// 收集原有单指标数据
+			metricData := config.CollectMetrics()
+
+			// 收集新的多指标数据并合并
+			queryMetricData := config.CollectQueryMetrics()
+			metricData = append(metricData, queryMetricData...)
+
+			select {
+			case <-ctx.Done():
+				return
+			case resultChan <- metricData:
+			}
+		}()
+
+		// 等待结果或超时
+		select {
+		case <-ctx.Done():
+			log.Error("指标收集超时")
+			return []MetricData{}
+		case result := <-resultChan:
+			duration := time.Since(start)
+			log.WithFields(log.Fields{
+				"metrics_count": len(result),
+				"duration_ms":   duration.Milliseconds(),
+			}).Info("指标数据收集完成")
+			return result
+		}
 	}
 
 	// start collector
+	log.Info("注册Prometheus收集器")
 	c := newCollector(stats)
 	prometheus.MustRegister(c)
 	if !log.IsLevelEnabled(log.DebugLevel) {
 		prometheus.Unregister(prometheus.NewGoCollector())
 		prometheus.Unregister(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
 	}
-	handler := promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{})
+
+	// 设置采集处理器选项
+	handlerOpts := promhttp.HandlerOpts{
+		MaxRequestsInFlight: 10, // 限制并发请求数
+		Timeout:             time.Duration(config.Timeout) * time.Second,
+		EnableOpenMetrics:   true,
+	}
+	handler := promhttp.HandlerFor(prometheus.DefaultGatherer, handlerOpts)
 
 	// start http server
+	log.WithField("port", config.port).Info("启动HTTP服务器")
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", handler)
+	mux.HandleFunc("/health", HealthHandler) // 添加健康检查接口
 	mux.HandleFunc("/", RootHandler)
-
-	// Add the pprof routes
-	// mux.HandleFunc("/debug/pprof/", pprof.Index)
-	// mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
-	// mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
-	// mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
-	// mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
-
-	// mux.Handle("/debug/pprof/block", pprof.Handler("block"))
-	// mux.Handle("/debug/pprof/goroutine", pprof.Handler("goroutine"))
-	// mux.Handle("/debug/pprof/heap", pprof.Handler("heap"))
-	// mux.Handle("/debug/pprof/threadcreate", pprof.Handler("threadcreate"))
 
 	server := &http.Server{
 		Addr:         ":" + config.port,
 		Handler:      mux,
 		WriteTimeout: time.Duration(config.Timeout+2) * time.Second,
 		ReadTimeout:  time.Duration(config.Timeout+2) * time.Second,
+		IdleTimeout:  120 * time.Second,
 	}
+
+	// 优雅关闭服务
+	go func() {
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+		<-sigChan
+		log.Info("接收到关闭信号，正在优雅关闭服务...")
+
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			log.WithError(err).Error("服务关闭出错")
+		}
+	}()
+
+	log.WithFields(log.Fields{
+		"address": server.Addr,
+		"timeout": config.Timeout,
+	}).Info("HTTP服务器配置完成，开始监听")
+
 	err = server.ListenAndServe()
-	if err != nil {
+	if err != nil && err != http.ErrServerClosed {
+		log.WithError(err).Error("HTTP服务器启动失败")
 		return errors.Wrap(err, "web(ListenAndServe)")
 	}
 	return nil
@@ -223,38 +308,77 @@ func RootHandler(w http.ResponseWriter, r *http.Request) {
 
 // CollectMetrics - collecting all metrics and fetch the results
 func (config *Config) CollectMetrics() []MetricData {
-
 	var wg sync.WaitGroup
 	metricCnt := len(config.Metrics)
 	metricsC := make(chan MetricData, metricCnt)
+	errC := make(chan error, metricCnt)
 
+	// 创建采集任务
 	for mPos := range config.Metrics {
-
 		wg.Add(1)
 		go func(mPos int) {
-
 			defer wg.Done()
-			//最终输出
+			defer func() {
+				if r := recover(); r != nil {
+					log.WithFields(log.Fields{
+						"metric": config.Metrics[mPos].Name,
+						"panic":  r,
+					}).Error("指标采集发生严重错误")
+					errC <- fmt.Errorf("metric %s panic: %v", config.Metrics[mPos].Name, r)
+				}
+			}()
+
+			var stats []MetricRecord
+
+			stats = config.CollectMetric(mPos)
+
+			if len(stats) == 0 {
+				log.WithFields(log.Fields{
+					"metric": config.Metrics[mPos].Name,
+				}).Error("指标采集失败")
+				errC <- fmt.Errorf("metric %s failed", config.Metrics[mPos].Name)
+				return
+			}
+
 			metricsC <- MetricData{
 				Name:       config.Metrics[mPos].Name,
 				Help:       config.Metrics[mPos].Help,
 				MetricType: config.Metrics[mPos].MetricType,
-				Stats:      config.CollectMetric(mPos),
+				Stats:      stats,
 			}
 		}(mPos)
 	}
 
+	// 等待所有任务完成
 	go func() {
 		wg.Wait()
 		close(metricsC)
+		close(errC)
 	}()
 
+	// 收集结果和错误
 	var metricsData []MetricData
-	for metric := range metricsC {
-		if metric.Stats != nil {
-			metricsData = append(metricsData, metric)
+	var errors []error
+
+	for i := 0; i < metricCnt; i++ {
+		select {
+		case metric := <-metricsC:
+			if metric.Stats != nil && len(metric.Stats) > 0 {
+				metricsData = append(metricsData, metric)
+			}
+		case err := <-errC:
+			if err != nil {
+				errors = append(errors, err)
+			}
 		}
 	}
+
+	// 记录采集结果统计
+	log.WithFields(log.Fields{
+		"total_metrics":      metricCnt,
+		"successful_metrics": len(metricsData),
+		"failed_metrics":     len(errors),
+	}).Info("指标采集完成")
 
 	return metricsData
 }
@@ -269,24 +393,33 @@ func (config *Config) CollectMetric(mPos int) []MetricRecord {
 	tenantCnt := len(config.Tenants)
 	metricC := make(chan []MetricRecord, tenantCnt)
 
+	// 添加WaitGroup来等待所有goroutine完成
+	var wg sync.WaitGroup
+
 	for tPos := range config.Tenants {
-
+		wg.Add(1)
 		go func(tPos int) {
-
+			defer wg.Done()
 			metricC <- config.DataFunc(mPos, tPos)
 		}(tPos)
 	}
 
+	// 在单独的goroutine中等待所有任务完成并关闭通道
+	// 等待所有goroutine完成
+	go func() {
+		wg.Wait()
+		close(metricC)
+	}()
 	// collect data
 	var sData []MetricRecord
-	for i := 0; i < tenantCnt; i++ {
+	for mc := range metricC {
 		select {
-		case mc := <-metricC:
+		case <-ctx.Done():
+			return sData
+		default:
 			if mc != nil {
 				sData = append(sData, mc...)
 			}
-		case <-ctx.Done():
-			return sData
 		}
 	}
 	return sData
@@ -294,38 +427,141 @@ func (config *Config) CollectMetric(mPos int) []MetricRecord {
 
 // GetMetricData - metric data for one tenant
 func (config *Config) GetMetricData(mPos, tPos int) []MetricRecord {
+	start := time.Now()
+	logFields := log.Fields{
+		"metric": config.Metrics[mPos].Name,
+		"tenant": config.Tenants[tPos].Name,
+	}
 
-	sel := config.GetSelection(mPos, tPos)
-	if "" == sel {
+	// 获取所有匹配的schema
+	var matchedSchemas []string
+	for _, schema := range config.Metrics[mPos].SchemaFilter {
+		if ContainsString(schema, config.Tenants[tPos].Schemas) {
+			matchedSchemas = append(matchedSchemas, schema)
+		}
+	}
+
+	if len(matchedSchemas) == 0 {
+		log.WithFields(logFields).Error("metrics schema filter must include at least one tenant schema")
 		return nil
 	}
 
-	rows, err := config.Tenants[tPos].conn.Query(sel)
-	if err != nil {
-		log.WithFields(log.Fields{
+	var allMetrics []MetricRecord
+	var errors []error
+
+	// 遍历所有匹配的schema执行查询
+	for _, schema := range matchedSchemas {
+		schemaLogFields := log.Fields{
 			"metric": config.Metrics[mPos].Name,
 			"tenant": config.Tenants[tPos].Name,
-			"error":  err,
-		}).Error("Can't get sql result for metric")
-		return nil
-	}
-	defer rows.Close()
+			"schema": schema,
+		}
 
-	md, err := config.Tenants[tPos].GetMetricRows(rows, config.Metrics[mPos].Labels)
-	// if err = rows.Err(); err != nil {
-	if err != nil {
-		log.WithFields(log.Fields{
-			"metric": config.Metrics[mPos].Name,
-			"tenant": config.Tenants[tPos].Name,
-			"error":  err,
-		}).Error("Can't get sql result for metric")
-		return nil
+		// 替换SQL中的schema占位符
+		sel := strings.ReplaceAll(config.Metrics[mPos].SQL, "<SCHEMA>", schema)
+		log.WithFields(schemaLogFields).WithField("sql", sel).Debug("执行SQL查询")
+
+		// 最大重试次数
+		// maxRetries := 3
+
+		// 带重试的查询执行
+		// for retry := 0; retry < maxRetries; retry++ {
+		// 	if retry > 0 {
+		// 		log.WithFields(schemaLogFields).WithField("retry", retry).Warn("重试执行SQL查询")
+		// 		time.Sleep(time.Duration(retry) * time.Second)
+		// 	}
+
+		// 设置查询超时
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(config.Timeout)*time.Second)
+		rows, err := config.Tenants[tPos].conn.QueryContext(ctx, sel)
+
+		// if err == nil {
+		// 	break
+		// }
+
+		// log.WithFields(schemaLogFields).WithError(err).WithField("retry", retry).Error("SQL查询失败")
+		// if retry == maxRetries-1 {
+		// 	errors = append(errors, fmt.Errorf("schema %s query failed after %d retries: %v", schema, maxRetries, err))
+		// 	continue
+		// }
+		// }
+
+		if err != nil {
+			cancel()
+			log.WithFields(schemaLogFields).WithError(err).WithField("sql", sel).Error("数据读取失败")
+			errors = append(errors, fmt.Errorf("schema %s data read failed: %v", schema, err))
+			continue
+		}
+
+		data, cols, err := config.Tenants[tPos].RowsConvert(rows)
+		if err != nil {
+			cancel()
+			log.WithFields(schemaLogFields).WithError(err).Error("数据转换处理失败")
+			errors = append(errors, fmt.Errorf("schema %s convert results failed: %v", schema, err))
+			continue
+		}
+		cancel()
+		// 处理查询结果
+		md, err := config.Tenants[tPos].GetMetricRows(config.Metrics[mPos].Name, data, cols, config.Metrics[mPos].Labels, config.Metrics[mPos].ValueColumn)
+		if err != nil {
+			log.WithFields(schemaLogFields).WithError(err).Error("处理查询结果失败")
+			errors = append(errors, fmt.Errorf("schema %s process results failed: %v", schema, err))
+			continue
+		}
+
+		// 更新schema标签
+		for i := range md {
+			for j, label := range md[i].Labels {
+				if label == "schema" {
+					md[i].LabelValues[j] = low(schema)
+					break
+				}
+			}
+		}
+
+		allMetrics = append(allMetrics, md...)
 	}
-	return md
+
+	duration := time.Since(start)
+	log.WithFields(log.Fields{
+		"metric":       config.Metrics[mPos].Name,
+		"tenant":       config.Tenants[tPos].Name,
+		"schemas":      len(matchedSchemas),
+		"rows_count":   len(allMetrics),
+		"errors_count": len(errors),
+		"duration_ms":  duration.Milliseconds(),
+	}).Info("指标数据采集完成")
+
+	if len(errors) > 0 {
+		log.WithFields(logFields).WithField("errors", errors).Error("部分schema查询失败")
+	}
+
+	return allMetrics
 }
 
 // GetSelection - prepare the db selection
 func (config *Config) GetSelection(mPos, tPos int) string {
+	// 检查版本要求
+	if config.Metrics[mPos].VersionFilter != "" {
+		version, err := config.GetHanaVersion(tPos)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"metric": config.Metrics[mPos].Name,
+				"tenant": config.Tenants[tPos].Name,
+				"error":  err,
+			}).Error("获取数据库版本失败")
+			return ""
+		}
+		if !config.CheckVersionRequirement(version, config.Metrics[mPos].VersionFilter) {
+			log.WithFields(log.Fields{
+				"metric":      config.Metrics[mPos].Name,
+				"tenant":      config.Tenants[tPos].Name,
+				"version":     version,
+				"requirement": config.Metrics[mPos].VersionFilter,
+			}).Debug("数据库版本不满足要求，跳过该指标")
+			return ""
+		}
+	}
 
 	// all values of metrics tag filter must be in tenants tags, otherwise the
 	// metric is not relevant for the tenant
@@ -342,94 +578,154 @@ func (config *Config) GetSelection(mPos, tPos int) string {
 		return ""
 	}
 
-	// metrics schema filter must include a tenant schema
-	var schema string
-	if schema = FirstValueInSlice(config.Metrics[mPos].SchemaFilter, config.Tenants[tPos].Schemas); 0 == len(schema) {
+	// 获取所有匹配的schema
+	var matchedSchemas []string
+	for _, schema := range config.Metrics[mPos].SchemaFilter {
+		if ContainsString(schema, config.Tenants[tPos].Schemas) {
+			matchedSchemas = append(matchedSchemas, schema)
+		}
+	}
+
+	if len(matchedSchemas) == 0 {
 		log.WithFields(log.Fields{
 			"metric": config.Metrics[mPos].Name,
 			"tenant": config.Tenants[tPos].Name,
-		}).Error("metrics schema filter must include a tenant schema")
+		}).Error("metrics schema filter must include at least one tenant schema")
 		return ""
 	}
-	return strings.ReplaceAll(config.Metrics[mPos].SQL, "<SCHEMA>", schema)
+
+	// 使用第一个匹配的schema作为SQL查询
+	return strings.ReplaceAll(config.Metrics[mPos].SQL, "<SCHEMA>", matchedSchemas[0])
+}
+
+func (tenent *TenantInfo) RowsConvert(rows *sql.Rows) ([][]interface{}, []string, error) {
+	//exact the sql.Rows out
+	cols, err := rows.Columns()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "GetMetricRows(rows.Columns)")
+	}
+	if len(cols) < 1 {
+		return nil, nil, errors.New("GetMetricRows(no columns)")
+	}
+
+	rows1 := make([][]interface{}, 0)
+
+	for rows.Next() {
+		// 创建通用接口切片用于扫描
+		values := make([]interface{}, len(cols))
+		for i := range values {
+			// 为每列创建一个通用接口
+			values[i] = new(interface{})
+		}
+		err = rows.Scan(values...)
+		if err != nil {
+			return nil, nil, errors.Wrap(err, "GetMetricRows(rows.Scan)")
+		}
+		rows1 = append(rows1, values)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, nil, errors.Wrap(err, "GetMetricRows(rows)")
+	}
+	return rows1, cols, nil
 }
 
 // GetMetricRows - return the metric values
-func (tenant *TenantInfo) GetMetricRows(rows *sql.Rows, labels []string) ([]MetricRecord, error) {
-
+func (tenant *TenantInfo) GetMetricRows(metricName string, rows [][]interface{}, cols []string, labels []string, valueColumn string) ([]MetricRecord, error) {
 	label_search := ""
 	if len(labels) > 0 {
 		label_search = low(strings.Join(labels, ","))
-
-	}
-
-	cols, err := rows.Columns()
-	if err != nil {
-		return nil, errors.Wrap(err, "GetMetricRows(rows.Columns)")
 	}
 
 	if len(cols) < 1 {
 		return nil, errors.New("GetMetricRows(no columns)")
 	}
 
-	// first column must not be string
-	colt, err := rows.ColumnTypes()
-	if err != nil {
-		return nil, errors.Wrap(err, "GetMetricRows(rows.ColumnTypes)")
-	}
-	switch colt[0].ScanType().Name() {
-	case "string", "bool", "":
-		return nil, errors.New("GetMetricRows(first column must be numeric)")
-	default:
+	// 确定值列的索引
+	valueColumnIndex := 0
+	if valueColumn != "" {
+		for i, col := range cols {
+			if strings.EqualFold(col, valueColumn) {
+				valueColumnIndex = i
+				break
+			}
+		}
 	}
 
-	values := make([]PlainData, len(cols))
-	scanArgs := make([]interface{}, len(values))
+	// 创建通用接口切片用于扫描
+	values := make([]interface{}, len(cols))
 	for i := range values {
-		scanArgs[i] = &values[i]
+		// 为每列创建一个通用接口
+		values[i] = new(interface{})
 	}
 
 	var md []MetricRecord
-	for rows.Next() {
+	for _, values := range rows {
+
 		data := MetricRecord{
-			Labels:      []string{"tenant", "usage"},
-			LabelValues: []string{low(tenant.Name), low(tenant.Usage)},
-		}
-		err = rows.Scan(scanArgs...)
-		if err != nil {
-			return nil, errors.Wrap(err, "GetMetricRows(rows.Scan)")
+			Labels:      []string{"tenant", "usage", "schema"},
+			LabelValues: []string{low(tenant.Name), low(tenant.Usage), ""},
 		}
 
-		for i, colval := range values {
-
-			// check for NULL value
-			if colval == nil {
-				return nil, errors.Wrap(err, "GetMetricRows(colval is null)")
+		for i := range values {
+			// 检查空值
+			if values[i] == nil || *(values[i].(*interface{})) == nil {
+				continue
 			}
 
-			if 0 == i {
-
-				// the first column must be the float value
-				data.Value, err = strconv.ParseFloat(string(colval), 64)
-				if err != nil {
-					return nil, errors.Wrap(err, "GetMetricRows(ParseFloat - first column cannot be converted to float64)")
+			if i == valueColumnIndex {
+				// 处理值列
+				val := *(values[i].(*interface{}))
+				switch v := val.(type) {
+				case time.Time:
+					// 处理TIMESTAMP类型
+					data.Value = float64(v.Unix())
+				case string:
+					// 尝试解析为时间戳或数值
+					if t, err := time.Parse("2006-01-02 15:04:05", v); err == nil {
+						data.Value = float64(t.Unix())
+					} else {
+						data.Value, err = parseFractionToFloat(v)
+						if err != nil {
+							log.WithFields(log.Fields{
+								"error":  err,
+								"type":   "string",
+								"value":  v,
+								"metric": metricName,
+							}).Warn("GetMetricRows: 字符串值无法转换为浮点数，使用默认值0")
+							data.Value = 0
+						}
+					}
+				default:
+					// 尝试转换为float64
+					if fVal, err := convertToFloat64(v); err == nil {
+						data.Value = fVal
+					} else {
+						data.Value = 0
+						if err != nil {
+							log.WithFields(log.Fields{
+								"error":  err,
+								"type":   fmt.Sprintf("%T", v),
+								"value":  v,
+								"metric": metricName,
+							}).Warn("GetMetricRows: 不支持的值类型，使用默认值0")
+						}
+					}
 				}
 			} else {
+				// 处理标签列
+				strVal := convertToString(*(values[i].(*interface{})))
 				if len(labels) > 0 {
 					if strings.Contains(label_search, low(cols[i])) {
 						data.Labels = append(data.Labels, low(cols[i]))
-						data.LabelValues = append(data.LabelValues, low(strings.Join(strings.Split(string(colval), " "), "_")))
+						data.LabelValues = append(data.LabelValues, low(strings.Join(strings.Split(strVal, " "), "_")))
 					}
 				} else {
 					data.Labels = append(data.Labels, low(cols[i]))
-					data.LabelValues = append(data.LabelValues, low(strings.Join(strings.Split(string(colval), " "), "_")))
+					data.LabelValues = append(data.LabelValues, low(strings.Join(strings.Split(strVal, " "), "_")))
 				}
 			}
 		}
 		md = append(md, data)
-	}
-	if err = rows.Err(); err != nil {
-		return nil, errors.Wrap(err, "GetMetricRows(rows)")
 	}
 
 	return md, nil
@@ -437,38 +733,72 @@ func (tenant *TenantInfo) GetMetricRows(rows *sql.Rows, labels []string) ([]Metr
 
 // add missing information to tenant struct
 func (config *Config) prepare() ([]TenantInfo, error) {
-
+	log.Info("开始准备租户连接和信息收集")
 	var tenantsOk []TenantInfo
+
+	// 初始化版本缓存
+	config.versionMutex.Lock()
+	config.versionCache = make(map[int]string)
+	config.versionMutex.Unlock()
 
 	// adapt config.Metrics schema filter
 	config.AdaptSchemaFilter()
 
 	secretMap, err := config.GetSecretMap()
 	if err != nil {
+		log.WithError(err).Error("获取密钥映射失败")
 		return nil, errors.Wrap(err, "prepare(getSecretMap)")
 	}
 
 	for i := 0; i < len(config.Tenants); i++ {
+		log.WithFields(log.Fields{
+			"tenant":   config.Tenants[i].Name,
+			"conn_str": config.Tenants[i].ConnStr,
+		}).Info("尝试建立租户数据库连接")
 
 		config.Tenants[i].conn = config.getConnection(i, secretMap)
 		if config.Tenants[i].conn == nil {
+			log.WithField("tenant", config.Tenants[i].Name).Error("建立数据库连接失败，跳过该租户")
 			continue
 		}
 
 		// get tenant usage and hana-user schema information
+		log.WithField("tenant", config.Tenants[i].Name).Debug("开始收集租户使用信息和schema权限")
 		err = config.collectRemainingTenantInfos(i)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"tenant": config.Tenants[i].Name,
 				"error":  err,
-			}).Error("Problems with select of remaining tenant info - tenant removed!")
-
+			}).Error("收集租户信息失败 - 租户将被移除")
 			continue
 		}
+
+		// 获取并缓存版本信息
+		version, err := config.getHanaVersionFromDB(i)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"tenant": config.Tenants[i].Name,
+				"error":  err,
+			}).Error("获取数据库版本失败")
+			continue
+		}
+
+		config.versionMutex.Lock()
+		config.versionCache[i] = version
+		config.versionMutex.Unlock()
+
+		log.WithFields(log.Fields{
+			"tenant":  config.Tenants[i].Name,
+			"usage":   config.Tenants[i].Usage,
+			"schemas": len(config.Tenants[i].Schemas),
+			"version": version,
+		}).Info("租户信息收集完成")
+
 		tenantsOk = append(tenantsOk, config.Tenants[i])
 	}
-	return tenantsOk, nil
 
+	log.WithField("total_tenants", len(tenantsOk)).Info("租户准备完成")
+	return tenantsOk, nil
 }
 
 // get tenant usage and hana-user schema information
@@ -489,7 +819,6 @@ func (config *Config) collectRemainingTenantInfos(tPos int) error {
 	if err != nil {
 		return errors.Wrap(err, "collectRemainingTenantInfos(Query)")
 	}
-	defer rows.Close()
 
 	for rows.Next() {
 		var schema string
@@ -509,7 +838,7 @@ func (config *Config) collectRemainingTenantInfos(tPos int) error {
 func (config *Config) AdaptSchemaFilter() {
 
 	for mPos := range config.Metrics {
-		if !ContainsString("sys", config.Metrics[mPos].SchemaFilter) {
+		if len(config.Metrics[mPos].SchemaFilter) == 0 {
 			config.Metrics[mPos].SchemaFilter = append(config.Metrics[mPos].SchemaFilter, "sys")
 		}
 	}
@@ -568,4 +897,360 @@ func (config *Config) GetTestData1(mPos, tPos int) []MetricRecord {
 // GetTestData2 - for testing purpose only
 func (config *Config) GetTestData2(mPos, tPos int) []MetricRecord {
 	return nil
+}
+
+// CollectQueryMetrics - 收集所有多指标查询的结果
+func (config *Config) CollectQueryMetrics() []MetricData {
+	var wg sync.WaitGroup
+	queryCnt := len(config.Queries)
+	queriesC := make(chan []MetricData, queryCnt)
+
+	for qPos := range config.Queries {
+		wg.Add(1)
+		go func(qPos int) {
+			defer wg.Done()
+			queriesC <- config.CollectQueryMetric(qPos)
+		}(qPos)
+	}
+
+	go func() {
+		wg.Wait()
+		close(queriesC)
+	}()
+
+	var metricsData []MetricData
+	for query := range queriesC {
+		if query != nil {
+			metricsData = append(metricsData, query...)
+		}
+	}
+
+	return metricsData
+}
+
+// CollectQueryMetric - 为每个租户收集一个查询的多个指标
+func (config *Config) CollectQueryMetric(qPos int) []MetricData {
+	// 设置超时
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Duration(config.Timeout)*time.Second))
+	defer cancel()
+
+	tenantCnt := len(config.Tenants)
+	metricC := make(chan []MetricData, tenantCnt)
+	var wg sync.WaitGroup
+	for tPos := range config.Tenants {
+		wg.Add(1)
+		go func(tPos int) {
+			defer wg.Done()
+
+			metricC <- config.QueryDataFunc(qPos, tPos)
+		}(tPos)
+	}
+	go func() {
+		wg.Wait()
+		close(metricC)
+	}()
+	// 收集数据
+	var sData []MetricData
+	for mc := range metricC {
+		select {
+		case <-ctx.Done():
+			return sData
+		default:
+			if mc != nil {
+				sData = append(sData, mc...)
+			}
+		}
+	}
+	return sData
+}
+
+// GetQueryMetricData - 为一个租户获取查询的多个指标数据
+func (config *Config) GetQueryMetricData(qPos, tPos int) []MetricData {
+	start := time.Now()
+	logFields := log.Fields{
+		"query":  config.Queries[qPos].SQL,
+		"tenant": config.Tenants[tPos].Name,
+	}
+
+	// 获取所有匹配的schema
+	var matchedSchemas []string
+	for _, schema := range config.Queries[qPos].SchemaFilter {
+		if ContainsString(schema, config.Tenants[tPos].Schemas) {
+			matchedSchemas = append(matchedSchemas, schema)
+		}
+	}
+
+	if len(matchedSchemas) == 0 {
+		log.WithFields(logFields).Error("query schema filter must include at least one tenant schema")
+		return nil
+	}
+
+	var allMetrics []MetricData
+	// 遍历所有匹配的schema执行查询
+	for _, schema := range matchedSchemas {
+		// 替换SQL中的schema占位符
+		sel := strings.ReplaceAll(config.Queries[qPos].SQL, "<SCHEMA>", schema)
+		log.WithFields(logFields).WithField("schema", schema).WithField("sql", sel).Debug("执行SQL查询")
+
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(config.Timeout)*time.Second)
+
+		rows, err := config.Tenants[tPos].conn.QueryContext(ctx, sel)
+
+		// rows, err := config.Tenants[tPos].conn.Query(sel)
+		if err != nil {
+			cancel()
+			log.WithFields(logFields).WithField("schema", schema).WithField("sql", sel).WithError(err).Error("执行SQL查询失败")
+			continue
+		}
+		data, cols, err := config.Tenants[tPos].RowsConvert(rows)
+		if err != nil {
+			cancel()
+			log.WithFields(logFields).WithField("schema", schema).WithError(err).Error("数据转换处理失败")
+			continue
+		}
+		cancel()
+		// 处理查询结果
+		var metricsData []MetricData
+		for _, metric := range config.Queries[qPos].Metrics {
+			metricData := MetricData{
+				Name:       metric.Name,
+				Help:       metric.Help,
+				MetricType: metric.MetricType,
+			}
+
+			md, err := config.Tenants[tPos].GetMetricRows(metric.Name, data, cols, metric.Labels, metric.ValueColumn)
+			if err != nil {
+				log.WithFields(logFields).WithField("schema", schema).WithError(err).Error("处理查询结果失败")
+				continue
+			}
+
+			// 更新schema标签
+			for i := range md {
+				for j, label := range md[i].Labels {
+					if label == "schema" {
+						md[i].LabelValues[j] = low(schema)
+						break
+					}
+				}
+			}
+
+			metricData.Stats = append(metricData.Stats, md...)
+			if len(metricData.Stats) > 0 {
+				metricsData = append(metricsData, metricData)
+			}
+		}
+		allMetrics = append(allMetrics, metricsData...)
+	}
+
+	duration := time.Since(start)
+	log.WithFields(log.Fields{
+		"query":       config.Queries[qPos].SQL,
+		"tenant":      config.Tenants[tPos].Name,
+		"schemas":     len(matchedSchemas),
+		"metrics":     len(allMetrics),
+		"duration_ms": duration.Milliseconds(),
+	}).Debug("查询数据收集完成")
+
+	return allMetrics
+}
+
+// GetSelection - prepare the db selection for multi-metric query
+func (config *Config) GetQuerySelection(qPos, tPos int) string {
+	// 检查版本要求
+	if config.Queries[qPos].VersionFilter != "" {
+		version, err := config.GetHanaVersion(tPos)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"query":  config.Queries[qPos].SQL,
+				"tenant": config.Tenants[tPos].Name,
+				"error":  err,
+			}).Error("获取数据库版本失败")
+			return ""
+		}
+		if !config.CheckVersionRequirement(version, config.Queries[qPos].VersionFilter) {
+			log.WithFields(log.Fields{
+				"query":       config.Queries[qPos].SQL,
+				"tenant":      config.Tenants[tPos].Name,
+				"version":     version,
+				"requirement": config.Queries[qPos].VersionFilter,
+			}).Debug("数据库版本不满足要求，跳过该查询")
+			return ""
+		}
+	}
+
+	// all values of query tag filter must be in tenants tags
+	if !SubSliceInSlice(config.Queries[qPos].TagFilter, config.Tenants[tPos].Tags) {
+		return ""
+	}
+
+	sel := strings.TrimSpace(config.Queries[qPos].SQL)
+	if !strings.EqualFold(sel[0:6], "select") {
+		log.WithFields(log.Fields{
+			"query":  config.Queries[qPos].SQL,
+			"tenant": config.Tenants[tPos].Name,
+		}).Error("Only selects are allowed")
+		return ""
+	}
+
+	// 获取所有匹配的schema
+	var matchedSchemas []string
+	for _, schema := range config.Queries[qPos].SchemaFilter {
+		if ContainsString(schema, config.Tenants[tPos].Schemas) {
+			matchedSchemas = append(matchedSchemas, schema)
+		}
+	}
+
+	if len(matchedSchemas) == 0 {
+		log.WithFields(log.Fields{
+			"query":  config.Queries[qPos].SQL,
+			"tenant": config.Tenants[tPos].Name,
+		}).Error("query schema filter must include at least one tenant schema")
+		return ""
+	}
+
+	// 使用第一个匹配的schema作为SQL查询
+	return strings.ReplaceAll(config.Queries[qPos].SQL, "<SCHEMA>", matchedSchemas[0])
+}
+
+// GetHanaVersion - 获取SAP HANA数据库版本
+func (config *Config) GetHanaVersion(tPos int) (string, error) {
+	// 从缓存中获取版本信息
+	config.versionMutex.RLock()
+	version, exists := config.versionCache[tPos]
+	config.versionMutex.RUnlock()
+
+	if !exists {
+		return "", errors.New("version information not found in cache")
+	}
+
+	return version, nil
+}
+
+func (config *Config) getHanaVersionFromDB(tPos int) (string, error) {
+	row := config.Tenants[tPos].conn.QueryRow("SELECT value FROM SYS.M_HOST_INFORMATION where key = 'build_version'")
+	var version string
+	err := row.Scan(&version)
+	if err != nil {
+		return "", errors.Wrap(err, "getHanaVersionFromDB(Scan)")
+	}
+	return version, nil
+}
+
+// CheckVersionRequirement - 检查版本是否满足要求
+func (config *Config) CheckVersionRequirement(version, requirement string) bool {
+	// 解析版本要求
+	req := strings.TrimSpace(requirement)
+	if req == "" {
+		return true
+	}
+
+	// 解析操作符和版本
+	var op string
+	var reqVersion string
+	if strings.HasPrefix(req, ">=") {
+		op = ">="
+		reqVersion = strings.TrimSpace(req[2:])
+	} else if strings.HasPrefix(req, "<=") {
+		op = "<="
+		reqVersion = strings.TrimSpace(req[2:])
+	} else if strings.HasPrefix(req, ">") {
+		op = ">"
+		reqVersion = strings.TrimSpace(req[1:])
+	} else if strings.HasPrefix(req, "<") {
+		op = "<"
+		reqVersion = strings.TrimSpace(req[1:])
+	} else if strings.HasPrefix(req, "=") {
+		op = "="
+		reqVersion = strings.TrimSpace(req[1:])
+	} else {
+		op = "="
+		reqVersion = req
+	}
+
+	// 比较版本
+	switch op {
+	case ">=":
+		return version >= reqVersion
+	case "<=":
+		return version <= reqVersion
+	case ">":
+		return version > reqVersion
+	case "<":
+		return version < reqVersion
+	case "=":
+		return version == reqVersion
+	default:
+		return false
+	}
+}
+
+func parseFractionToFloat(value string) (float64, error) {
+	parts := strings.Split(value, "/")
+	if len(parts) == 2 {
+		numerator, err := strconv.ParseFloat(parts[0], 64)
+		if err != nil {
+			return 0, err
+		}
+		denominator, err := strconv.ParseFloat(parts[1], 64)
+		if err != nil {
+			return 0, err
+		}
+		if denominator == 0 {
+			return 0, fmt.Errorf("除数不能为零")
+		}
+		return numerator / denominator, nil
+	}
+	return strconv.ParseFloat(value, 64)
+}
+
+// 辅助函数：将任意类型转换为float64
+func convertToFloat64(v interface{}) (float64, error) {
+	switch value := v.(type) {
+	case float64:
+		return value, nil
+	case float32:
+		return float64(value), nil
+	case int64:
+		return float64(value), nil
+	case int32:
+		return float64(value), nil
+	case int:
+		return float64(value), nil
+	case uint64:
+		return float64(value), nil
+	case uint32:
+		return float64(value), nil
+	case uint:
+		return float64(value), nil
+	case []uint8:
+		return parseFractionToFloat(string(value))
+	case string:
+		return parseFractionToFloat(value)
+	case *big.Rat:
+		// 处理big.Rat类型
+		f, _ := value.Float64()
+		return f, nil
+	default:
+		// 尝试将其他类型转换为字符串后再解析
+		strVal := fmt.Sprintf("%v", value)
+		return parseFractionToFloat(strVal)
+	}
+}
+
+// 辅助函数：将任意类型转换为字符串
+func convertToString(v interface{}) string {
+	switch value := v.(type) {
+	case string:
+		return value
+	case time.Time:
+		return value.Format("2006-01-02 15:04:05")
+	case *big.Rat:
+		// 对于big.Rat类型，使用String()方法获取字符串表示
+		return value.String()
+	case []uint8:
+		// 对于[]uint8类型，直接转换为字符串
+		return string(value)
+	default:
+		return fmt.Sprintf("%v", value)
+	}
 }

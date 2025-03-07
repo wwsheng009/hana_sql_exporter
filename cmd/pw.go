@@ -30,7 +30,7 @@ import (
 	"github.com/spf13/viper"
 	"github.com/ulranh/hana_sql_exporter/internal"
 	"golang.org/x/crypto/nacl/secretbox"
-	"golang.org/x/crypto/ssh/terminal"
+	"golang.org/x/term"
 )
 
 // pwCmd represents the pw command
@@ -69,8 +69,7 @@ func (config *Config) SetPw(cmd *cobra.Command) error {
 
 	fmt.Print("Password: ")
 	// syscall.Stdin is not 0 on windows
-	pw, err := terminal.ReadPassword(int(syscall.Stdin))
-	// pw, err := terminal.ReadPassword(0)
+	pw, err := term.ReadPassword(int(syscall.Stdin))
 	if err != nil {
 		return errors.Wrap(err, "setPw(ReadPassword)")
 	}
@@ -168,10 +167,10 @@ func (config *Config) FindTenant(cmpTenant string) TenantInfo {
 
 // GetSecretKey - create secret key once
 func GetSecretKey() ([]byte, error) {
-
 	key := make([]byte, 32)
-	rand.Seed(time.Now().UnixNano())
-	if _, err := rand.Read(key); err != nil {
+	// 使用新的随机生成器
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	if _, err := r.Read(key); err != nil {
 		return nil, errors.Wrap(err, "GetSecretKey(rand.Read)")
 	}
 
@@ -210,7 +209,6 @@ func PwDecrypt(encrypted, byteSecret []byte) (string, error) {
 
 // GetSecretMap - unmarshal secret bytes
 func (config *Config) GetSecretMap() (internal.Secret, error) {
-
 	if config.Secret == nil {
 		return internal.Secret{}, nil
 	}

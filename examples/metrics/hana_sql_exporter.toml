@@ -139,3 +139,34 @@
   TagFilter = ["abap"]
   SchemaFilter = ["sapabap1", "sapabap","sapewm"]
   Sql = "select count(*) from <SCHEMA>.tbtco where status='Y'"
+
+[[Queries]]
+  SQL = "SELECT TOP 10 host, LPAD(port, 5) port, SUBSTRING(REPLACE_REGEXPR('\n' IN statement_string WITH ' ' OCCURRENCE ALL), 1,30) sql_string, statement_hash sql_hash, execution_count, total_execution_time + total_preparation_time total_elapsed_time FROM <SCHEMA>.m_sql_plan_cache ORDER BY total_elapsed_time, execution_count DESC"
+  TagFilter = []
+  SchemaFilter = ["sys"]
+  
+  [[Queries.Metrics]]
+    Name = "hdb_sql_top_time_consumers_elapsed"
+    Help = "Top statements time consumers. Sum of the time consumed in all executions in Microseconds"
+    MetricType = "gauge"
+    ValueColumn = "total_elapsed_time"
+    Labels = ["host", "port", "sql_string", "sql_hash"]
+  
+  [[Queries.Metrics]]
+    Name = "hdb_sql_top_time_consumers_count"
+    Help = "Top statements time consumers. Number of total executions of the SQL Statement"
+    MetricType = "gauge"
+    ValueColumn = "execution_count"
+    Labels = ["host", "port", "sql_string", "sql_hash"]
+
+[[Queries]]
+  SQL = "SELECT service_name, connection_status, COUNT(*) AS count FROM <SCHEMA>.M_CONNECTIONS GROUP BY service_name, connection_status"
+  TagFilter = []
+  SchemaFilter = ["sys"]
+  
+  [[Queries.Metrics]]
+    Name = "hdb_connections_by_service_and_status"
+    Help = "Number of connections grouped by service and status"
+    MetricType = "gauge"
+    ValueColumn = "count"
+    Labels = ["service_name", "connection_status"]

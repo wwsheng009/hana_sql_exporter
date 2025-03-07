@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	// _ "github.com/SAP/go-hdb/driver"
@@ -44,25 +45,49 @@ type TenantInfo struct {
 
 // MetricInfo - metric data
 type MetricInfo struct {
-	Name         string
-	Help         string
-	MetricType   string
-	TagFilter    []string
-	SchemaFilter []string
-	Labels       []string
-	SQL          string
+	Name          string
+	Help          string
+	MetricType    string
+	TagFilter     []string
+	SchemaFilter  []string
+	Labels        []string
+	SQL           string
+	VersionFilter string // 版本过滤条件，支持范围配置，如">= 2.00.048"
+	ValueColumn   string
+}
+
+// QueryMetricInfo - 每个SQL查询中的单个指标定义
+type QueryMetricInfo struct {
+	Name        string
+	Help        string
+	MetricType  string
+	ValueColumn string
+	Labels      []string
+}
+
+// QueryInfo - 查询定义，一个SQL对应多个指标
+type QueryInfo struct {
+	SQL           string
+	TagFilter     []string
+	SchemaFilter  []string
+	Metrics       []QueryMetricInfo
+	VersionFilter string // 版本过滤条件，支持范围配置，如">= 2.00.048"
 }
 
 // Config struct with config file infos
 type Config struct {
-	Secret   []byte
-	Tenants  []TenantInfo
-	Metrics  []MetricInfo
-	DataFunc func(mPos, tPos int) []MetricRecord
-	Timeout  uint
-	port     string
-	LogLevel string `mapstructure:"log-level"`
-	LogFile  string `mapstructure:"log-file"`
+	Secret        []byte
+	Tenants       []TenantInfo
+	Metrics       []MetricInfo // 原有的单指标配置
+	Queries       []QueryInfo  // 新增的多指标查询配置
+	DataFunc      func(mPos, tPos int) []MetricRecord
+	QueryDataFunc func(qPos, tPos int) []MetricData // 新增的多指标数据获取函数
+	Timeout       uint
+	port          string
+	LogLevel      string         `mapstructure:"log-level"`
+	LogFile       string         `mapstructure:"log-file"`
+	versionCache  map[int]string // 用于缓存每个tenant的版本信息
+	versionMutex  sync.RWMutex   // 用于保护版本缓存的并发访问
 }
 
 var cfgFile string
