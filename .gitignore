@@ -23,4 +23,4 @@ hana_sql_exporter
 # Dependency directories (remove the comment below to include it)
 # vendor/
 build/
-test/
+test/*.toml

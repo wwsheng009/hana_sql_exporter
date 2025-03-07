@@ -176,11 +176,11 @@ func (config *Config) Web() error {
 	log.Info("开始初始化HANA SQL Exporter服务")
 
 	// 添加恢复机制
-	defer func() {
-		if r := recover(); r != nil {
-			log.WithField("panic", r).Error("服务发生严重错误，正在恢复")
-		}
-	}()
+	// defer func() {
+	// 	if r := recover(); r != nil {
+	// 		log.WithField("panic", r).Error("服务发生严重错误，正在恢复")
+	// 	}
+	// }()
 
 	config.Tenants, err = config.prepare()
 	if err != nil {
@@ -212,17 +212,47 @@ func (config *Config) Web() error {
 		resultChan := make(chan []MetricData, 1)
 
 		go func() {
-			// 收集原有单指标数据
-			metricData := config.CollectMetrics()
+			// 使用通道并发收集指标数据
+			metricChan := make(chan []MetricData, 2)
 
-			// 收集新的多指标数据并合并
-			queryMetricData := config.CollectQueryMetrics()
-			metricData = append(metricData, queryMetricData...)
+			// 并发收集单指标和多指标数据
+			go func() {
+				metrics := config.CollectMetrics()
+				metricChan <- metrics
+			}()
+
+			go func() {
+				queryMetrics := config.CollectQueryMetrics()
+				metricChan <- queryMetrics
+			}()
+
+			// 等待两个收集过程完成
+			var allMetrics []MetricData
+			existingMetrics := make(map[string]struct{})
+
+			// 处理收集到的指标数据
+			for i := 0; i < 2; i++ {
+				metrics := <-metricChan
+				
+				// 检查并合并指标
+				for _, m := range metrics {
+					if _, exists := existingMetrics[m.Name]; exists {
+						log.WithFields(log.Fields{
+							"metric": m.Name,
+						}).Warn("跳过重复的指标名称")
+						continue
+					}
+					
+					allMetrics = append(allMetrics, m)
+					existingMetrics[m.Name] = struct{}{}
+				}
+			}
+
 
 			select {
 			case <-ctx.Done():
 				return
-			case resultChan <- metricData:
+			case resultChan <- allMetrics:
 			}
 		}()
 
@@ -1020,6 +1050,10 @@ func (config *Config) GetQueryMetricData(qPos, tPos int) []MetricData {
 
 	// 获取所有匹配的schema
 	var matchedSchemas []string
+	if len(config.Queries[qPos].SchemaFilter) == 0 {
+		config.Queries[qPos].SchemaFilter = []string{"sys"}
+	}
+
 	for _, schema := range config.Queries[qPos].SchemaFilter {
 		if ContainsString(schema, config.Tenants[tPos].Schemas) {
 			matchedSchemas = append(matchedSchemas, schema)
@@ -1141,6 +1175,9 @@ func (config *Config) GetQuerySelection(qPos, tPos int) string {
 		return ""
 	}
 
+	if len(config.Queries[qPos].SchemaFilter) == 0 {
+		config.Queries[qPos].SchemaFilter = []string{"sys"}
+	}
 	// 获取所有匹配的schema
 	var matchedSchemas []string
 	for _, schema := range config.Queries[qPos].SchemaFilter {
@@ -1193,44 +1230,66 @@ func (config *Config) CheckVersionRequirement(version, requirement string) bool 
 		return true
 	}
 
-	// 解析操作符和版本
-	var op string
-	var reqVersion string
-	if strings.HasPrefix(req, ">=") {
-		op = ">="
-		reqVersion = strings.TrimSpace(req[2:])
-	} else if strings.HasPrefix(req, "<=") {
-		op = "<="
-		reqVersion = strings.TrimSpace(req[2:])
-	} else if strings.HasPrefix(req, ">") {
-		op = ">"
-		reqVersion = strings.TrimSpace(req[1:])
-	} else if strings.HasPrefix(req, "<") {
-		op = "<"
-		reqVersion = strings.TrimSpace(req[1:])
-	} else if strings.HasPrefix(req, "=") {
-		op = "="
-		reqVersion = strings.TrimSpace(req[1:])
-	} else {
-		op = "="
-		reqVersion = req
+	// 分割多个条件
+	conditions := strings.Split(req, " ")
+
+	for _, cond := range conditions {
+		cond = strings.TrimSpace(cond)
+		if cond == "" {
+			continue
+		}
+
+		// 解析单个条件
+		var op string
+		var reqVersion string
+		if strings.HasPrefix(cond, ">=") {
+			op = ">="
+			reqVersion = strings.TrimSpace(cond[2:])
+		} else if strings.HasPrefix(cond, "<=") {
+			op = "<="
+			reqVersion = strings.TrimSpace(cond[2:])
+		} else if strings.HasPrefix(cond, ">") {
+			op = ">"
+			reqVersion = strings.TrimSpace(cond[1:])
+		} else if strings.HasPrefix(cond, "<") {
+			op = "<"
+			reqVersion = strings.TrimSpace(cond[1:])
+		} else if strings.HasPrefix(cond, "=") {
+			op = "="
+			reqVersion = strings.TrimSpace(cond[1:])
+		} else {
+			op = "="
+			reqVersion = cond
+		}
+
+		// 验证单个条件
+		switch op {
+		case ">=":
+			if !(version >= reqVersion) {
+				return false
+			}
+		case "<=":
+			if !(version <= reqVersion) {
+				return false
+			}
+		case ">":
+			if !(version > reqVersion) {
+				return false
+			}
+		case "<":
+			if !(version < reqVersion) {
+				return false
+			}
+		case "=":
+			if version != reqVersion {
+				return false
+			}
+		default:
+			return false
+		}
 	}
 
-	// 比较版本
-	switch op {
-	case ">=":
-		return version >= reqVersion
-	case "<=":
-		return version <= reqVersion
-	case ">":
-		return version > reqVersion
-	case "<":
-		return version < reqVersion
-	case "=":
-		return version == reqVersion
-	default:
-		return false
-	}
+	return true
 }
 
 func parseFractionToFloat(value string) (float64, error) {

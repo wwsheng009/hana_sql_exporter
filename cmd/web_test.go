@@ -217,3 +217,32 @@ func Test_FirstValueInSclice(t *testing.T) {
 	b := cmd.FirstValueInSlice([]string{"s1", "s2"}, []string{})
 	assert.Equal(b, "")
 }
+
+func TestCheckVersionRequirement_Combined(t *testing.T) {
+	tests := []struct {
+		name        string
+		version     string
+		requirement string
+		expected    bool
+	}{
+		{"valid range", "2.5.0", ">=1.0.0 <=3.0.0", true},
+		{"lower boundary", "1.0.0", ">=1.0.0 <=3.0.0", true},
+		{"upper boundary", "3.0.0", ">=1.0.0 <=3.0.0", true},
+		{"below min", "0.9.9", ">=1.0.0 <=3.0.0", false},
+		{"above max", "3.1.0", ">=1.0.0 <=3.0.0", false},
+		{"mixed conditions", "2.0.0", ">1.5.0 <2.5.0", true},
+		{"invalid format", "2.0", "=2.0.0", false},
+	};
+
+	config := &cmd.Config{}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := config.CheckVersionRequirement(tt.version, tt.requirement)
+			if result != tt.expected {
+				t.Errorf("expected %v but got %v for version %s with requirement %s", 
+					tt.expected, result, tt.version, tt.requirement)
+			}
+		})
+	}
+}
