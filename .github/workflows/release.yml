@@ -6,10 +6,20 @@ on:
     types: [published]
 
 jobs:
-  release:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            arch: [amd64, arm64]
+          - os: windows-latest
+            platform: windows
+            arch: [amd64, arm64]
+          - os: macos-latest
+            platform: darwin
+            arch: [amd64, arm64]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v3
         with:
@@ -20,48 +30,56 @@ jobs:
         with:
           go-version-file: "go.mod"
 
-      - name: Build
+      - name: Build and Package
         run: |
-          PLATFORMS="linux/amd64 linux/arm64 windows/amd64 windows/arm64 darwin/amd64 darwin/arm64"
-          for platform in $PLATFORMS; do
-            make $platform
+          for arch in ${matrix.arch[@]}; do
+            export GOOS=${{ matrix.platform }}
+            export GOARCH=$arch
+            make build
+            cd build/${GOOS}_${GOARCH}
+            if [[ "${{ matrix.platform }}" == "windows" ]]; then
+              gzip -c hana_sql_exporter.exe > hana_sql_exporter_${GOOS}_${GOARCH}.exe.gz
+            else
+              gzip -c hana_sql_exporter > hana_sql_exporter_${GOOS}_${GOARCH}.gz
+            fi
+            cd ../..
           done
 
-      - name: Compress Artifacts
-        run: |
-          mkdir -p artifacts
-          cd build
-          for dir in */; do
-            platform=${dir%/}
-            cd "$platform"
-            if [[ -f "hana_sql_exporter.exe" ]]; then
-              gzip -c "hana_sql_exporter.exe" > "../../artifacts/hana_sql_exporter_${platform}.exe.gz"
-            else
-              gzip -c "hana_sql_exporter" > "../../artifacts/hana_sql_exporter_${platform}.gz"
-            fi
-            cd ..
-          done
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: hana_sql_exporter-${{ matrix.platform }}
+          path: build/**/*.gz
+          retention-days: 1
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event.release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
 
       - name: Generate Release Notes
-        if: github.event.release
         run: |
-          echo "## 构建信息" >> ${{ github.workspace }}-RELEASE_NOTES.md
-          echo "* 版本: $(git describe --tags --always --dirty)" >> ${{ github.workspace }}-RELEASE_NOTES.md
-          echo "* 构建时间: $(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> ${{ github.workspace }}-RELEASE_NOTES.md
-          echo "\n## 支持平台" >> ${{ github.workspace }}-RELEASE_NOTES.md
-          echo "* Linux (amd64, arm64)" >> ${{ github.workspace }}-RELEASE_NOTES.md
-          echo "* Windows (amd64, arm64)" >> ${{ github.workspace }}-RELEASE_NOTES.md
-          echo "* macOS (amd64, arm64)" >> ${{ github.workspace }}-RELEASE_NOTES.md
+          echo "## 构建信息" >> RELEASE_NOTES.md
+          echo "* 版本: $(git describe --tags --always --dirty)" >> RELEASE_NOTES.md
+          echo "* 构建时间: $(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> RELEASE_NOTES.md
+          echo "\n## 支持平台" >> RELEASE_NOTES.md
+          echo "* Linux (amd64, arm64)" >> RELEASE_NOTES.md
+          echo "* Windows (amd64, arm64)" >> RELEASE_NOTES.md
+          echo "* macOS (amd64, arm64)" >> RELEASE_NOTES.md
 
       - name: Upload Release Assets
         uses: softprops/action-gh-release@v1
-        if: github.event.release
         with:
-          files: artifacts/*.gz
-          body_path: ${{ github.workspace }}-RELEASE_NOTES.md
+          files: artifacts/**/*.gz
+          body_path: RELEASE_NOTES.md
           token: ${{ secrets.GITHUB_TOKEN }}
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: hana_sql_exporter
-          path: artifacts/*.gz

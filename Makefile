@@ -11,21 +11,13 @@ VERSION=$(shell git describe --tags --always --dirty)
 GO=go
 GOFLAGS=-ldflags "-X main.version=$(VERSION)"
 
-# Platforms to build for
-PLATFORMS=linux/amd64 linux/arm64 windows/amd64 windows/arm64 darwin/amd64 darwin/arm64
+.PHONY: build clean
 
-.PHONY: all clean
-
-all: $(PLATFORMS)
-
-$(PLATFORMS):
-	$(eval GOOS=$(word 1,$(subst /, ,$@)))
-	$(eval GOARCH=$(word 2,$(subst /, ,$@)))
-	$(eval EXTENSION=$(if $(filter windows,$(GOOS)),.exe,))
-	$(eval PLATFORM_DIR=$(BUILD_DIR)/$(GOOS)_$(GOARCH))
+# Single platform build
+build:
 	@echo "Building for $(GOOS)/$(GOARCH)..."
-	@mkdir -p $(PLATFORM_DIR)
-	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) $(GO) build $(GOFLAGS) -o $(PLATFORM_DIR)/$(BINARY)$(EXTENSION)
+	@mkdir -p $(BUILD_DIR)/$(GOOS)_$(GOARCH)
+	CGO_ENABLED=0 $(GO) build $(GOFLAGS) -o $(BUILD_DIR)/$(GOOS)_$(GOARCH)/$(BINARY)$(if $(filter windows,$(GOOS)),.exe,)
 
 clean:
 	@echo "Cleaning build directory..."
