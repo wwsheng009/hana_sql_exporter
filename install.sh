@@ -35,25 +35,33 @@ if [ -z "${LATEST_VERSION}" ]; then
     exit 1
 fi
 
-# 下载并解压执行文件
-DOWNLOAD_URL="https://github.com/wwsheng009/hana_sql_exporter/releases/download/${LATEST_VERSION}/hana_sql_exporter_linux_${ARCH}.gz"
+# 下载并解压文件
+DOWNLOAD_URL="https://github.com/wwsheng009/hana_sql_exporter/releases/download/${LATEST_VERSION}/hana_sql_exporter_linux_${ARCH}.tar.gz"
 echo "正在下载: ${DOWNLOAD_URL}"
-if ! curl -L -o "${INSTALL_DIR}/hana_sql_exporter.gz" "${DOWNLOAD_URL}"; then
+if ! curl -L -o "${INSTALL_DIR}/hana_sql_exporter.tar.gz" "${DOWNLOAD_URL}"; then
     echo "下载失败"
     exit 1
 fi
 
-# 解压执行文件
-gunzip -f "${INSTALL_DIR}/hana_sql_exporter.gz"
-chmod +x "${INSTALL_DIR}/hana_sql_exporter"
+# 解压文件
+cd "${INSTALL_DIR}"
+tar xzf hana_sql_exporter.tar.gz
+chmod +x hana_sql_exporter
 
-# 下载服务文件
-SERVICE_URL="https://github.com/wwsheng009/hana_sql_exporter/releases/download/${LATEST_VERSION}/hana_sql_exporter@.service"
-echo "正在下载服务文件: ${SERVICE_URL}"
-if ! curl -L -o "${SERVICE_FILE}" "${SERVICE_URL}"; then
-    echo "服务文件下载失败"
-    exit 1
+# 检查配置文件是否存在
+if [ ! -f "hana_sql_exporter.toml" ]; then
+    echo "警告：未找到配置文件"
 fi
+
+# 复制服务文件到系统目录
+if [ -f "hana_sql_exporter@.service" ]; then
+    cp hana_sql_exporter@.service "${SERVICE_FILE}"
+else
+    echo "警告：未找到服务文件"
+fi
+
+# 清理临时文件
+rm -f hana_sql_exporter.tar.gz
 
 # 重新加载systemd配置
 systemctl daemon-reload

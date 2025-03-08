@@ -40,6 +40,16 @@ jobs:
         with:
           go-version-file: "go.mod"
 
+      - name: Install 7-Zip (Windows)
+        if: matrix.platform == 'windows'
+        shell: powershell
+        run: |
+          $url = "https://www.7-zip.org/a/7z2301-x64.exe"
+          $output = "7z-installer.exe"
+          Invoke-WebRequest -Uri $url -OutFile $output
+          Start-Process -FilePath $output -Args "/S" -Wait
+          echo "C:\Program Files\7-Zip" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
       - name: Build and Package
         shell: bash
         run: |
@@ -70,7 +80,11 @@ jobs:
           if [ "${{ matrix.platform }}" = "windows" ]; then
             OUTPUT="build/artifacts/hana_sql_exporter_${GOOS}_${GOARCH}.zip"
             cd "$BUILD_DIR"
-            zip -r "../../$OUTPUT" .
+            if command -v 7z &> /dev/null; then
+              7z a "../../$OUTPUT" .
+            else
+              powershell -Command "Compress-Archive -Path '.\*' -DestinationPath '..\..\$OUTPUT' -Force"
+            fi
           else
             OUTPUT="build/artifacts/hana_sql_exporter_${GOOS}_${GOARCH}.tar.gz"
             cd "$BUILD_DIR"
