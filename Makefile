@@ -22,9 +22,10 @@ $(PLATFORMS):
 	$(eval GOOS=$(word 1,$(subst /, ,$@)))
 	$(eval GOARCH=$(word 2,$(subst /, ,$@)))
 	$(eval EXTENSION=$(if $(filter windows,$(GOOS)),.exe,))
+	$(eval PLATFORM_DIR=$(BUILD_DIR)/$(GOOS)_$(GOARCH))
 	@echo "Building for $(GOOS)/$(GOARCH)..."
-	@mkdir -p $(BUILD_DIR)
-	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) $(GO) build $(GOFLAGS) -o $(BUILD_DIR)/$(BINARY)_$(GOOS)_$(GOARCH)$(EXTENSION)
+	@mkdir -p $(PLATFORM_DIR)
+	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) $(GO) build $(GOFLAGS) -o $(PLATFORM_DIR)/$(BINARY)$(EXTENSION)
 
 clean:
 	@echo "Cleaning build directory..."
