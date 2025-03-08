@@ -8,6 +8,7 @@ on:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
@@ -31,18 +32,20 @@ jobs:
           go-version-file: "go.mod"
 
       - name: Build and Package
+        shell: bash
         run: |
-          for arch in ${matrix.arch[@]}; do
+          for arch in ${{ join(matrix.arch, ' ') }}; do
             export GOOS=${{ matrix.platform }}
             export GOARCH=$arch
+            echo "Building for $GOOS/$GOARCH..."
             make build
             cd build/${GOOS}_${GOARCH}
-            if [[ "${{ matrix.platform }}" == "windows" ]]; then
+            if [ "${{ matrix.platform }}" = "windows" ]; then
               gzip -c hana_sql_exporter.exe > hana_sql_exporter_${GOOS}_${GOARCH}.exe.gz
             else
               gzip -c hana_sql_exporter > hana_sql_exporter_${GOOS}_${GOARCH}.gz
             fi
-            cd ../..
+            cd ../.. || exit
           done
 
       - name: Upload Build Artifacts

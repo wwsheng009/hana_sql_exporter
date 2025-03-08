@@ -17,8 +17,13 @@ GOFLAGS=-ldflags "-X main.version=$(VERSION)"
 build:
 	@echo "Building for $(GOOS)/$(GOARCH)..."
 	@mkdir -p $(BUILD_DIR)/$(GOOS)_$(GOARCH)
-	CGO_ENABLED=0 $(GO) build $(GOFLAGS) -o $(BUILD_DIR)/$(GOOS)_$(GOARCH)/$(BINARY)$(if $(filter windows,$(GOOS)),.exe,)
+	@echo "Checking build environment..."
+	@$(GO) version || (echo "Error: Go is not installed properly"; exit 1)
+	@echo "Starting build process..."
+	CGO_ENABLED=0 $(GO) build $(GOFLAGS) -o $(BUILD_DIR)/$(GOOS)_$(GOARCH)/$(BINARY)$(if $(filter windows,$(GOOS)),.exe,) || (echo "Error: Build failed"; exit 1)
+	@echo "Build completed successfully"
 
 clean:
 	@echo "Cleaning build directory..."
 	@rm -rf $(BUILD_DIR)
+	@echo "Clean completed"
