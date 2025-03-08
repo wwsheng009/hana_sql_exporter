@@ -29,14 +29,15 @@ jobs:
 
       - name: Compress Artifacts
         run: |
+          mkdir -p artifacts
           cd build
           for dir in */; do
             platform=${dir%/}
             cd "$platform"
             if [[ -f "hana_sql_exporter.exe" ]]; then
-              gzip -c "hana_sql_exporter.exe" > "hana_sql_exporter_${platform}.exe.gz"
+              gzip -c "hana_sql_exporter.exe" > "../../artifacts/hana_sql_exporter_${platform}.exe.gz"
             else
-              gzip -c "hana_sql_exporter" > "hana_sql_exporter_${platform}.gz"
+              gzip -c "hana_sql_exporter" > "../../artifacts/hana_sql_exporter_${platform}.gz"
             fi
             cd ..
           done
@@ -56,11 +57,11 @@ jobs:
         uses: softprops/action-gh-release@v1
         if: github.event.release
         with:
-          files: build/**/*.gz
+          files: artifacts/*.gz
           body_path: ${{ github.workspace }}-RELEASE_NOTES.md
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/upload-artifact@v4
         with:
           name: hana_sql_exporter
-          path: build/*.gz
+          path: artifacts/*.gz
