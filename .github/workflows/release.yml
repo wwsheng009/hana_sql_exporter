@@ -13,13 +13,22 @@ jobs:
         include:
           - os: ubuntu-latest
             platform: linux
-            arch: [amd64, arm64]
+            arch: amd64
+          - os: ubuntu-latest
+            platform: linux
+            arch: arm64
           - os: windows-latest
             platform: windows
-            arch: [amd64, arm64]
+            arch: amd64
+          - os: windows-latest
+            platform: windows
+            arch: arm64
           - os: macos-latest
             platform: darwin
-            arch: [amd64, arm64]
+            arch: amd64
+          - os: macos-latest
+            platform: darwin
+            arch: arm64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v3
@@ -34,26 +43,52 @@ jobs:
       - name: Build and Package
         shell: bash
         run: |
-          for arch in ${{ join(matrix.arch, ' ') }}; do
-            export GOOS=${{ matrix.platform }}
-            export GOARCH=$arch
-            echo "Building for $GOOS/$GOARCH..."
-            make build
-            cd build/${GOOS}_${GOARCH}
-            if [ "${{ matrix.platform }}" = "windows" ]; then
-              gzip -c hana_sql_exporter.exe > hana_sql_exporter_${GOOS}_${GOARCH}.exe.gz
-            else
-              gzip -c hana_sql_exporter > hana_sql_exporter_${GOOS}_${GOARCH}.gz
-            fi
-            cd ../.. || exit
-          done
+          mkdir -p build/artifacts
+          export GOOS=${{ matrix.platform }}
+          export GOARCH=${{ matrix.arch }}
+          echo "Building for $GOOS/$GOARCH..."
+          
+          # 确保构建目录存在且为空
+          BUILD_DIR="build/${GOOS}_${GOARCH}"
+          rm -rf "$BUILD_DIR"
+          mkdir -p "$BUILD_DIR"
+          
+          # 执行构建
+          if ! make build; then
+            echo "Error: Build failed for $GOOS/$GOARCH"
+            exit 1
+          fi
+          
+          # 创建压缩文件
+          if [ "${{ matrix.platform }}" = "windows" ]; then
+            BINARY="$BUILD_DIR/hana_sql_exporter.exe"
+            OUTPUT="build/artifacts/hana_sql_exporter_${GOOS}_${GOARCH}.exe.gz"
+          else
+            BINARY="$BUILD_DIR/hana_sql_exporter"
+            OUTPUT="build/artifacts/hana_sql_exporter_${GOOS}_${GOARCH}.gz"
+          fi
+          
+          # 检查二进制文件是否存在
+          if [ ! -f "$BINARY" ]; then
+            echo "Error: Binary not found at $BINARY"
+            exit 1
+          fi
+          
+          # 压缩文件
+          if ! gzip -c "$BINARY" > "$OUTPUT"; then
+            echo "Error: Compression failed for $BINARY"
+            exit 1
+          fi
+          
+          echo "Successfully built and packaged for $GOOS/$GOARCH"
 
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: hana_sql_exporter-${{ matrix.platform }}
-          path: build/**/*.gz
+          path: build/artifacts/*.gz
           retention-days: 1
+          if-no-files-found: error
 
   release:
     needs: build
