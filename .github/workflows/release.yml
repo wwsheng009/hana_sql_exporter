@@ -85,10 +85,11 @@ jobs:
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: hana_sql_exporter-${{ matrix.platform }}
+          name: hana_sql_exporter-${{ matrix.platform }}-${{ matrix.arch }}
           path: build/artifacts/*.gz
           retention-days: 1
           if-no-files-found: error
+          overwrite: false
 
   release:
     needs: build
