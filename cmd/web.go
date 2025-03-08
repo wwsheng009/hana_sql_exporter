@@ -78,8 +78,8 @@ var webCmd = &cobra.Command{
 			}
 		}
 
-		if config.port == "" {
-			config.port, err = cmd.Flags().GetString("port")
+		if config.Port == "" {
+			config.Port, err = cmd.Flags().GetString("port")
 			if err != nil {
 				exit("Problem with port flag: ", err)
 			}
@@ -105,7 +105,7 @@ var webCmd = &cobra.Command{
 			if err != nil {
 				exit("error opening file: %v", err)
 			}
-
+			defer f.Close() // 确保文件最终会被关闭
 			log.SetOutput(f)
 		}
 
@@ -290,14 +290,14 @@ func (config *Config) Web() error {
 	handler := promhttp.HandlerFor(prometheus.DefaultGatherer, handlerOpts)
 
 	// start http server
-	log.WithField("port", config.port).Info("启动HTTP服务器")
+	log.WithField("port", config.Port).Info("启动HTTP服务器")
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", handler)
 	mux.HandleFunc("/health", HealthHandler) // 添加健康检查接口
 	mux.HandleFunc("/", RootHandler)
 
 	server := &http.Server{
-		Addr:         ":" + config.port,
+		Addr:         ":" + config.Port,
 		Handler:      mux,
 		WriteTimeout: time.Duration(config.Timeout+2) * time.Second,
 		ReadTimeout:  time.Duration(config.Timeout+2) * time.Second,
@@ -329,6 +329,10 @@ func (config *Config) Web() error {
 		log.WithError(err).Error("HTTP服务器启动失败")
 		return errors.Wrap(err, "web(ListenAndServe)")
 	}
+	log.WithFields(log.Fields{
+		"url": fmt.Sprintf("http://localhost:%s", config.Port),
+	}).Info("服务启动成功，可以通过以下地址访问")
+	fmt.Printf("服务启动成功，可以通过以下地址访问: http://localhost:%s\n", config.Port)
 	return nil
 }
 

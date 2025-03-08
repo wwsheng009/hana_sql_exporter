@@ -93,7 +93,7 @@ type Config struct {
 	DataFunc      func(mPos, tPos int) []MetricRecord `mapstructure:"-"`
 	QueryDataFunc func(qPos, tPos int) []MetricData  `mapstructure:"-"`// 新增的多指标数据获取函数
 	Timeout       uint
-	port          string
+	Port          string
 	LogLevel      string
 	LogFile       string
 	// versionCache  map[int]string // 用于缓存每个tenant的版本信息
