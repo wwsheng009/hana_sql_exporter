@@ -30,6 +30,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -193,9 +194,9 @@ func (config *Config) Web() error {
 		defer config.Tenants[i].conn.Close()
 	}
 
-	// 设置数据采集函数
-	config.DataFunc = config.GetMetricData
-	config.QueryDataFunc = config.GetQueryMetricData
+	// // 设置数据采集函数
+	// config.DataFunc = config.GetMetricData
+	// config.QueryDataFunc = config.GetQueryMetricData
 
 	stats := func() []MetricData {
 		start := time.Now()
@@ -276,8 +277,8 @@ func (config *Config) Web() error {
 	c := newCollector(stats)
 	prometheus.MustRegister(c)
 	if !log.IsLevelEnabled(log.DebugLevel) {
-		prometheus.Unregister(prometheus.NewGoCollector())
-		prometheus.Unregister(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
+		prometheus.Unregister(collectors.NewGoCollector())
+		prometheus.Unregister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 	}
 
 	// 设置采集处理器选项
@@ -371,7 +372,7 @@ func (config *Config) CollectMetrics() []MetricData {
 			}
 
 			metricsC <- MetricData{
-				Name:       config.Metrics[mPos].Name,
+				Name:       getMetricNameWithUnit(config.Metrics[mPos].Name, config.Metrics[mPos].Unit),
 				Help:       config.Metrics[mPos].Help,
 				MetricType: config.Metrics[mPos].MetricType,
 				Stats:      stats,
@@ -495,30 +496,10 @@ func (config *Config) GetMetricData(mPos, tPos int) []MetricRecord {
 		sel := strings.ReplaceAll(config.Metrics[mPos].SQL, "<SCHEMA>", schema)
 		log.WithFields(schemaLogFields).WithField("sql", sel).Debug("执行SQL查询")
 
-		// 最大重试次数
-		// maxRetries := 3
-
-		// 带重试的查询执行
-		// for retry := 0; retry < maxRetries; retry++ {
-		// 	if retry > 0 {
-		// 		log.WithFields(schemaLogFields).WithField("retry", retry).Warn("重试执行SQL查询")
-		// 		time.Sleep(time.Duration(retry) * time.Second)
-		// 	}
 
 		// 设置查询超时
 		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(config.Timeout)*time.Second)
 		rows, err := config.Tenants[tPos].conn.QueryContext(ctx, sel)
-
-		// if err == nil {
-		// 	break
-		// }
-
-		// log.WithFields(schemaLogFields).WithError(err).WithField("retry", retry).Error("SQL查询失败")
-		// if retry == maxRetries-1 {
-		// 	errors = append(errors, fmt.Errorf("schema %s query failed after %d retries: %v", schema, maxRetries, err))
-		// 	continue
-		// }
-		// }
 
 		if err != nil {
 			cancel()
@@ -549,6 +530,24 @@ func (config *Config) GetMetricData(mPos, tPos int) []MetricRecord {
 				if label == "schema" {
 					md[i].LabelValues[j] = low(schema)
 					break
+				}
+			}
+		}
+
+		// 如果unit不为空，添加unit标签
+		if config.Metrics[mPos].Unit != "" {
+			for i := range md {
+				// 检查是否已存在unit标签
+				unitLabelExists := false
+				for _, label := range md[i].Labels {
+					if low(label) == "unit" {
+						unitLabelExists = true
+						break
+					}
+				}
+				if !unitLabelExists {
+					md[i].Labels = append(md[i].Labels, "unit")
+					md[i].LabelValues = append(md[i].LabelValues, low(config.Metrics[mPos].Unit))
 				}
 			}
 		}
@@ -1096,7 +1095,7 @@ func (config *Config) GetQueryMetricData(qPos, tPos int) []MetricData {
 				continue
 			}
 			metricData := MetricData{
-				Name:       metric.Name,
+				Name:       getMetricNameWithUnit(metric.Name, metric.Unit),
 				Help:       metric.Help,
 				MetricType: metric.MetricType,
 			}
@@ -1113,6 +1112,24 @@ func (config *Config) GetQueryMetricData(qPos, tPos int) []MetricData {
 					if label == "schema" {
 						md[i].LabelValues[j] = low(schema)
 						break
+					}
+				}
+			}
+
+			// 如果unit不为空，添加unit标签
+			if metric.Unit != "" {
+				for i := range md {
+					// 检查是否已存在unit标签
+					unitLabelExists := false
+					for _, label := range md[i].Labels {
+						if low(label) == "unit" {
+							unitLabelExists = true
+							break
+						}
+					}
+					if !unitLabelExists {
+						md[i].Labels = append(md[i].Labels, "unit")
+						md[i].LabelValues = append(md[i].LabelValues, low(metric.Unit))
 					}
 				}
 			}
@@ -1293,13 +1310,17 @@ func (config *Config) CheckVersionRequirement(version, requirement string) bool 
 }
 
 func parseFractionToFloat(value string) (float64, error) {
+	// 去除前导和尾随空格
+	value = strings.TrimSpace(value)
+	
 	parts := strings.Split(value, "/")
 	if len(parts) == 2 {
-		numerator, err := strconv.ParseFloat(parts[0], 64)
+		// 处理分数形式
+		numerator, err := strconv.ParseFloat(strings.TrimSpace(parts[0]), 64)
 		if err != nil {
 			return 0, err
 		}
-		denominator, err := strconv.ParseFloat(parts[1], 64)
+		denominator, err := strconv.ParseFloat(strings.TrimSpace(parts[1]), 64)
 		if err != nil {
 			return 0, err
 		}
@@ -1308,6 +1329,8 @@ func parseFractionToFloat(value string) (float64, error) {
 		}
 		return numerator / denominator, nil
 	}
+	
+	// 处理普通数值
 	return strconv.ParseFloat(value, 64)
 }
 
@@ -1401,3 +1424,13 @@ func (config *Config) getSharedMetaData(tId int) MetricRecord {
 	}
 }
 
+func getMetricNameWithUnit(name, unit string) string {
+	if unit == "" {
+		return name
+	}
+	suffix := "_" + strings.ToLower(unit)
+	if strings.HasSuffix(strings.ToLower(name), suffix) {
+		return name
+	}
+	return name + suffix
+}

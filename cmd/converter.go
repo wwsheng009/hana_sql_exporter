@@ -52,6 +52,42 @@ type QueryConfig struct {
 	Metrics          []*Metric `json:"metrics"`
 }
 
+// processVersionRange 处理HANA版本范围过滤条件
+func processVersionRange(hanaVersionRange []string) string {
+	if len(hanaVersionRange) == 2 {
+		minVersion := hanaVersionRange[0]
+		maxVersion := hanaVersionRange[1]
+
+		compare := func(v1, v2 string) int {
+			v1Parts := strings.Split(v1, ".")
+			v2Parts := strings.Split(v2, ".")
+			for i := 0; i < len(v1Parts) && i < len(v2Parts); i++ {
+				vp1, _ := strconv.Atoi(v1Parts[i])
+				vp2, _ := strconv.Atoi(v2Parts[i])
+				if vp1 > vp2 {
+					return 1
+				} else if vp1 < vp2 {
+					return -1
+				}
+			}
+			return 0
+		}
+
+		if compare(minVersion, maxVersion) > 0 {
+			minVersion, maxVersion = maxVersion, minVersion
+		}
+		log.Printf("Processing version range: %s - %s", minVersion, maxVersion)
+		return fmt.Sprintf(">=%s <=%s", minVersion, maxVersion)
+	} else if len(hanaVersionRange) == 1 {
+		minVersion := hanaVersionRange[0]
+		log.Printf("Minimum version requirement detected: %s", minVersion)
+		return fmt.Sprintf(">=%s", minVersion)
+	}
+
+	log.Printf("Invalid HanaVersionRange: expected 1 or 2 elements, got %d", len(hanaVersionRange))
+	return ""
+}
+
 // convertMetrics 将metrics.json转换为TOML格式
 func convertMetrics(input, output string) error {
 	jsonFile, err := os.Open(input)
@@ -84,42 +120,8 @@ func convertMetrics(input, output string) error {
 			Metrics: make([]QueryMetricInfo, 0),
 		}
 
-		// 添加版本范围（如果存在）
-		// 在转换代码前添加检查逻辑
-		if len(queryConfig.HanaVersionRange) >= 2 {
-			// 提取并确保版本顺序正确
-			minVersion := queryConfig.HanaVersionRange[0]
-			maxVersion := queryConfig.HanaVersionRange[1]
-
-			// 简易版本号比较（假设版本号为 x.x.x 格式）
-			compare := func(v1, v2 string) int {
-				v1Parts := strings.Split(v1, ".")
-				v2Parts := strings.Split(v2, ".")
-				for i := 0; i < len(v1Parts) && i < len(v2Parts); i++ {
-					vp1, _ := strconv.Atoi(v1Parts[i])
-					vp2, _ := strconv.Atoi(v2Parts[i])
-					if vp1 > vp2 {
-						return 1
-					} else if vp1 < vp2 {
-						return -1
-					}
-				}
-				return 0
-			}
-
-			// 如果最小版本 > 最大版本，自动交换
-			if compare(minVersion, maxVersion) > 0 {
-				minVersion, maxVersion = maxVersion, minVersion
-			}
-
-			query.VersionFilter = fmt.Sprintf(">=%s <=%s", minVersion, maxVersion)
-		} else {
-			// 处理无效的版本范围配置
-			log.Printf("Invalid HanaVersionRange: expected 2 elements, got %d",
-				len(queryConfig.HanaVersionRange))
-			// 可以设置为空或默认值
-			query.VersionFilter = ""
-		}
+		// 处理版本范围
+		query.VersionFilter = processVersionRange(queryConfig.HanaVersionRange)
 
 		// 转换指标
 		for _, metric := range queryConfig.Metrics {
@@ -128,6 +130,7 @@ func convertMetrics(input, output string) error {
 				Help:        metric.Description,
 				MetricType:  strings.ToLower(metric.Type),
 				ValueColumn: metric.Value,
+				Unit:        metric.Unit,
 			}
 
 			if len(metric.Labels) > 0 {

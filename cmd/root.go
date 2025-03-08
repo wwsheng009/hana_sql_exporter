@@ -59,6 +59,7 @@ type MetricInfo struct {
 	SQL           string
 	VersionFilter string
 	ValueColumn   string
+	Unit          string
 	Disabled      bool // 新增Disabled字段
 }
 
@@ -68,6 +69,7 @@ type QueryMetricInfo struct {
 	Help        string
 	MetricType  string
 	ValueColumn string
+	Unit        string
 	Labels      []string
 	Disabled    bool
 }
@@ -88,12 +90,12 @@ type Config struct {
 	Tenants       []TenantInfo
 	Metrics       []MetricInfo // 原有的单指标配置
 	Queries       []QueryInfo  // 新增的多指标查询配置
-	DataFunc      func(mPos, tPos int) []MetricRecord `toml:"-"`
-	QueryDataFunc func(qPos, tPos int) []MetricData  `toml:"-"`// 新增的多指标数据获取函数
+	DataFunc      func(mPos, tPos int) []MetricRecord `mapstructure:"-"`
+	QueryDataFunc func(qPos, tPos int) []MetricData  `mapstructure:"-"`// 新增的多指标数据获取函数
 	Timeout       uint
 	port          string
-	LogLevel      string `toml:"log-level"`
-	LogFile       string `toml:"log-file"`
+	LogLevel      string
+	LogFile       string
 	// versionCache  map[int]string // 用于缓存每个tenant的版本信息
 	// versionMutex  sync.RWMutex   // 用于保护版本缓存的并发访问
 }

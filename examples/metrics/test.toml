@@ -1,5 +1,5 @@
 
-log-level = "debug"
+LogLevel = "debug"
 
 [[tenants]]
   ConnStr = "172.18.3.30:30015"
@@ -7,75 +7,6 @@ log-level = "debug"
   Tags = ["abap"]
   User = "SAPHANADB"
 
-
-[[Queries]]
-  Disabled = false
-  SQL = "SELECT host, ROUND(SUM(memory_size_in_total)/1024/1024) column_tables_used_mb FROM sys.m_cs_tables GROUP BY host;"
-  SchemaFilter = []
-  TagFilter = []
-  VersionFilter = ">=1.0.0 <=3.0.0"
-
-  [[Queries.Metrics]]
-    Disabled = false
-    Help = "Column tables total memory used in MB"
-    Labels = ["HOST"]
-    MetricType = "gauge"
-    Name = "hanadb_column_tables_used_memory"
-    ValueColumn = "COLUMN_TABLES_USED_MB"
-
-[[Queries]]
-  Disabled = false
-  SQL = "SELECT host, schema_name, ROUND(SUM(memory_size_in_total)/1024/1024) schema_memory_used_mb FROM sys.m_cs_tables GROUP BY host, schema_name;"
-  SchemaFilter = []
-  TagFilter = []
-  VersionFilter = ""
-
-  [[Queries.Metrics]]
-    Disabled = false
-    Help = "Total used memory by schema in MB"
-    Labels = ["HOST","SCHEMA_NAME"]
-    MetricType = "gauge"
-    Name = "hanadb_schema_used_memory"
-    ValueColumn = "SCHEMA_MEMORY_USED_MB"
-
-[[Queries]]
-  Disabled = false
-  SQL = "SELECT md.host, md.usage_type, md.path, md.filesystem_type, TO_DECIMAL(md.total_device_size / 1024 / 1024, 10, 2) total_device_size_mb, TO_DECIMAL(md.total_size / 1024 / 1024, 10, 2) total_size_mb, TO_DECIMAL(md.used_size / 1024 / 1024, 10, 2) total_used_size_mb, TO_DECIMAL(du.used_size / 1024 / 1024, 10, 2) used_size_mb FROM sys.m_disk_usage du, sys.m_disks md WHERE du.host = md.host AND du.usage_type = md.usage_type;"
-  SchemaFilter = []
-  TagFilter = []
-  VersionFilter = ""
-
-  [[Queries.Metrics]]
-    Disabled = false
-    Help = "Total device size returned by the operating system (in MB). It will be repeated if the device is shared between usages_types."
-    Labels = ["HOST","USAGE_TYPE","PATH","FILESYSTEM_TYPE"]
-    MetricType = "gauge"
-    Name = "hanadb_disk_total_device_size"
-    ValueColumn = "TOTAL_DEVICE_SIZE_MB"
-
-  [[Queries.Metrics]]
-    Disabled = false
-    Help = "Specifies the volume size in MB. It will be repeated if the volume is shared between usages_types."
-    Labels = ["HOST","USAGE_TYPE","PATH","FILESYSTEM_TYPE"]
-    MetricType = "gauge"
-    Name = "hanadb_disk_total_size"
-    ValueColumn = "TOTAL_SIZE_MB"
-
-  [[Queries.Metrics]]
-    Disabled = false
-    Help = "Specifies the used volume size in MB. It will be repeated if the volume is shared between usages_types."
-    Labels = ["HOST","USAGE_TYPE","PATH","FILESYSTEM_TYPE"]
-    MetricType = "gauge"
-    Name = "hanadb_disk_total_used_size"
-    ValueColumn = "TOTAL_USED_SIZE_MB"
-
-  [[Queries.Metrics]]
-    Disabled = false
-    Help = "Size of used disk space in MB based on usage_type"
-    Labels = ["HOST","USAGE_TYPE","PATH","FILESYSTEM_TYPE"]
-    MetricType = "gauge"
-    Name = "hanadb_disk_used_size"
-    ValueColumn = "USED_SIZE_MB"
 
 [[Queries]]
   Disabled = false
@@ -90,6 +21,7 @@ log-level = "debug"
     Labels = ["HOST","DISK"]
     MetricType = "gauge"
     Name = "hanadb_disk_io_queue_length"
+    Unit = "requests"
     ValueColumn = "QUEUE_LENGTH"
 
   [[Queries.Metrics]]
@@ -98,6 +30,7 @@ log-level = "debug"
     Labels = ["HOST","DISK"]
     MetricType = "gauge"
     Name = "hanadb_disk_io_latency"
+    Unit = "ms"
     ValueColumn = "LATENCY_MS"
 
   [[Queries.Metrics]]
@@ -106,6 +39,7 @@ log-level = "debug"
     Labels = ["HOST","DISK"]
     MetricType = "gauge"
     Name = "hanadb_disk_io_service_time"
+    Unit = "ms"
     ValueColumn = "SRV_MS"
 
   [[Queries.Metrics]]
@@ -114,6 +48,7 @@ log-level = "debug"
     Labels = ["HOST","DISK"]
     MetricType = "gauge"
     Name = "hanadb_disk_io_wait_time"
+    Unit = "ms"
     ValueColumn = "WAIT_MS"
 
   [[Queries.Metrics]]
@@ -122,6 +57,7 @@ log-level = "debug"
     Labels = ["HOST","DISK"]
     MetricType = "gauge"
     Name = "hanadb_disk_io_requests_per"
+    Unit = "second"
     ValueColumn = "IO_PER_S"
 
   [[Queries.Metrics]]
@@ -130,54 +66,259 @@ log-level = "debug"
     Labels = ["HOST","DISK"]
     MetricType = "gauge"
     Name = "hanadb_disk_io_throughput"
+    Unit = "kb_second"
     ValueColumn = "TP_KBPS"
 
 [[Queries]]
   Disabled = false
-  SQL = "SELECT MAX(TIMESTAMP) TIMESTAMP, HOST, MEASURED_ELEMENT_NAME CORE, SUM(MAP(CAPTION, 'User Time', TO_NUMBER(VALUE), 0)) USER_PCT, SUM(MAP(CAPTION, 'System Time', TO_NUMBER(VALUE), 0)) SYSTEM_PCT, SUM(MAP(CAPTION, 'Wait Time', TO_NUMBER(VALUE), 0)) WAITIO_PCT, SUM(MAP(CAPTION, 'Idle Time', 0, TO_NUMBER(VALUE))) BUSY_PCT, SUM(MAP(CAPTION, 'Idle Time', TO_NUMBER(VALUE), 0)) IDLE_PCT FROM sys.M_HOST_AGENT_METRICS WHERE MEASURED_ELEMENT_TYPE = 'Processor' GROUP BY HOST, MEASURED_ELEMENT_NAME;"
+  SQL = "SELECT m.host, LPAD(m.port, 5) port, m.service_name service, TO_DECIMAL(m.shared_memory_allocated_size / 1024 / 1024, 10, 2) shm_alloc_mb, TO_DECIMAL(m.shared_memory_used_size / 1024 / 1024, 10, 2) shm_used_mb, TO_DECIMAL(MAP(m.shared_memory_allocated_size, 0, 0, m.shared_memory_used_size / m.shared_memory_allocated_size * 100), 10, 2) shm_used_pct, TO_DECIMAL(m.heap_memory_allocated_size / 1024 / 1024, 10, 2) heap_alloc_mb, TO_DECIMAL(m.heap_memory_used_size / 1024 / 1024, 10, 2) heap_used_mb, TO_DECIMAL(MAP(m.heap_memory_allocated_size, 0, 0, m.heap_memory_used_size / m.heap_memory_allocated_size * 100), 10, 2) heap_used_pct, TO_DECIMAL(m.total_memory_used_size / 1024 / 1024, 10, 2) total_memory_used_mb, TO_DECIMAL(m.physical_memory_size / 1024 / 1024, 10, 2) total_phys_mem_mb, TO_DECIMAL(m.logical_memory_size / 1024 / 1024, 10, 2) total_logical_mem_mb, TO_DECIMAL(m.code_size / 1024 / 1024, 10, 2) code_size_mem_mb, TO_DECIMAL(m.stack_size / 1024 / 1024, 10, 2) stack_size_mem_mb, TO_DECIMAL(m.compactors_freeable_size / 1024 / 1024, 10, 2) compactors_freeable_size_mem_mb,   TO_DECIMAL(m.compactors_allocated_size / 1024 / 1024, 10, 2) compactors_allocated_size_mem_mb, TO_DECIMAL(m.allocation_limit / 1024 / 1024, 10, 2) process_alloc_limit_mb, TO_DECIMAL(m.effective_allocation_limit / 1024 / 1024, 10, 2) effective_proc_alloc_limit_mb FROM sys.m_service_memory m;"
   SchemaFilter = []
   TagFilter = []
   VersionFilter = ""
 
   [[Queries.Metrics]]
     Disabled = false
-    Help = "Percentage of CPU time spent by HANA DB in user space, over the last minute (in seconds)"
-    Labels = ["HOST","CORE"]
+    Help = "Allocated Shared Memory part of the memory pool per service in MB"
+    Labels = ["HOST","PORT","SERVICE"]
     MetricType = "gauge"
-    Name = "hanadb_cpu_user"
-    ValueColumn = "USER_PCT"
+    Name = "hanadb_memory_service_shared_allocated"
+    Unit = "mb"
+    ValueColumn = "SHM_ALLOC_MB"
 
   [[Queries.Metrics]]
     Disabled = false
-    Help = "Percentage of CPU time spent by HANA DB in Kernel space, over the last minute (in seconds)"
-    Labels = ["HOST","CORE"]
+    Help = "Used Shared Memory part of the memory pool per service in MB"
+    Labels = ["HOST","PORT","SERVICE"]
     MetricType = "gauge"
-    Name = "hanadb_cpu_system"
-    ValueColumn = "SYSTEM_PCT"
+    Name = "hanadb_memory_service_shared_used"
+    Unit = "mb"
+    ValueColumn = "SHM_USED_MB"
 
   [[Queries.Metrics]]
     Disabled = false
-    Help = "Percentage of CPU time spent by HANA DB in IO mode, over the last minute (in seconds)"
-    Labels = ["HOST","CORE"]
+    Help = "Percentage of used Shared Memory from the memory pool per service"
+    Labels = ["HOST","PORT","SERVICE"]
     MetricType = "gauge"
-    Name = "hanadb_cpu_waitio"
-    ValueColumn = "WAITIO_PCT"
+    Name = "hanadb_memory_service_shared_used"
+    Unit = "percent"
+    ValueColumn = "SHM_USED_PCT"
 
   [[Queries.Metrics]]
     Disabled = false
-    Help = "Percentage of CPU time spent by HANA DB, over the last minute (in seconds)"
-    Labels = ["HOST","CORE"]
+    Help = "Allocated Heap Memory part of the memory pool per service in MB"
+    Labels = ["HOST","PORT","SERVICE"]
     MetricType = "gauge"
-    Name = "hanadb_cpu_busy"
-    ValueColumn = "BUSY_PCT"
+    Name = "hanadb_memory_service_heap_allocated"
+    Unit = "mb"
+    ValueColumn = "HEAP_ALLOC_MB"
 
   [[Queries.Metrics]]
     Disabled = false
-    Help = "Percentage of CPU time not spent by HANA DB, over the last minute (in seconds)"
-    Labels = ["HOST","CORE"]
+    Help = "Used Heap Memory part of the memory pool per service in MB"
+    Labels = ["HOST","PORT","SERVICE"]
     MetricType = "gauge"
-    Name = "hanadb_cpu_idle"
-    ValueColumn = "IDLE_PCT"
+    Name = "hanadb_memory_service_heap_used"
+    Unit = "mb"
+    ValueColumn = "HEAP_USED_MB"
+
+  [[Queries.Metrics]]
+    Disabled = false
+    Help = "Percentage of used Heap Memory part of the memory pool per service"
+    Labels = ["HOST","PORT","SERVICE"]
+    MetricType = "gauge"
+    Name = "hanadb_memory_service_heap_used"
+    Unit = "percent"
+    ValueColumn = "HEAP_USED_PCT"
+
+  [[Queries.Metrics]]
+    Disabled = false
+    Help = "Total memory from the memory pool used per services in MB"
+    Labels = ["HOST","PORT","SERVICE"]
+    MetricType = "gauge"
+    Name = "hanadb_memory_service_total_used"
+    Unit = "mb"
+    ValueColumn = "TOTAL_MEMORY_USED_MB"
+
+  [[Queries.Metrics]]
+    Disabled = false
+    Help = "Total physical resident memory size (operating system perspective) per service in MB"
+    Labels = ["HOST","PORT","SERVICE"]
+    MetricType = "gauge"
+    Name = "hanadb_memory_service_physical_total"
+    Unit = "mb"
+    ValueColumn = "TOTAL_PHYS_MEM_MB"
+
+  [[Queries.Metrics]]
+    Disabled = false
+    Help = "Total Virtual memory size (operating system perspective) per service in MB"
+    Labels = ["HOST","PORT","SERVICE"]
+    MetricType = "gauge"
+    Name = "hanadb_memory_service_virtual_total"
+    Unit = "mb"
+    ValueColumn = "TOTAL_LOGICAL_MEM_MB"
+
+  [[Queries.Metrics]]
+    Disabled = false
+    Help = "Code size, including shared libraries, per service in MB"
+    Labels = ["HOST","PORT","SERVICE"]
+    MetricType = "gauge"
+    Name = "hanadb_memory_service_code_size"
+    Unit = "mb"
+    ValueColumn = "CODE_SIZE_MEM_MB"
+
+  [[Queries.Metrics]]
+    Disabled = false
+    Help = "Stack size per service in MB"
+    Labels = ["HOST","PORT","SERVICE"]
+    MetricType = "gauge"
+    Name = "hanadb_memory_service_stack_size"
+    Unit = "mb"
+    ValueColumn = "STACK_SIZE_MEM_MB"
+
+  [[Queries.Metrics]]
+    Disabled = false
+    Help = "Memory that can be freed during a memory shortage per service in MB"
+    Labels = ["HOST","PORT","SERVICE"]
+    MetricType = "gauge"
+    Name = "hanadb_memory_service_compactors_freeable_size"
+    Unit = "mb"
+    ValueColumn = "COMPACTORS_FREEABLE_SIZE_MEM_MB"
+
+  [[Queries.Metrics]]
+    Disabled = false
+    Help = "Part of the memory pool that can potentially (if unpinned) be freed during a memory shortage per service in MB"
+    Labels = ["HOST","PORT","SERVICE"]
+    MetricType = "gauge"
+    Name = "hanadb_memory_service_compactors_allocated_size"
+    Unit = "mb"
+    ValueColumn = "COMPACTORS_ALLOCATED_SIZE_MEM_MB"
+
+  [[Queries.Metrics]]
+    Disabled = false
+    Help = "Maximum memory pool size (configurable value) per service in MB"
+    Labels = ["HOST","PORT","SERVICE"]
+    MetricType = "gauge"
+    Name = "hanadb_memory_service_alloc_limit"
+    Unit = "mb"
+    ValueColumn = "PROCESS_ALLOC_LIMIT_MB"
+
+  [[Queries.Metrics]]
+    Disabled = false
+    Help = "Effective maximum memory pool size, considering the pool sizes of other processes (computed value) per service in MB"
+    Labels = ["HOST","PORT","SERVICE"]
+    MetricType = "gauge"
+    Name = "hanadb_memory_service_effective_alloc_limit"
+    Unit = "mb"
+    ValueColumn = "PROCESS_ALLOC_LIMIT_MB"
+
+[[Queries]]
+  Disabled = false
+  SQL = "SELECT TOP 10 host, LPAD(port, 5) port, SUBSTRING(REPLACE_REGEXPR('\n' IN statement_string WITH ' ' OCCURRENCE ALL), 1,30) sql_string, statement_hash sql_hash, execution_count, total_execution_time + total_preparation_time total_elapsed_time FROM sys.m_sql_plan_cache ORDER BY total_elapsed_time, execution_count DESC;"
+  SchemaFilter = []
+  TagFilter = []
+  VersionFilter = ""
+
+  [[Queries.Metrics]]
+    Disabled = false
+    Help = "Top statements time consumers. Sum of the time consumed in all executions in Microseconds"
+    Labels = ["HOST","PORT","SQL_STRING","SQL_HASH"]
+    MetricType = "gauge"
+    Name = "hanadb_sql_top_time_consumers"
+    Unit = "mu"
+    ValueColumn = "TOTAL_ELAPSED_TIME"
+
+  [[Queries.Metrics]]
+    Disabled = false
+    Help = "Top statements time consumers. Number of total executions of the SQL Statement"
+    Labels = ["HOST","PORT","SQL_STRING","SQL_HASH"]
+    MetricType = "gauge"
+    Name = "hanadb_sql_top_time_consumers"
+    Unit = "count"
+    ValueColumn = "EXECUTION_COUNT"
+
+[[Queries]]
+  Disabled = false
+  SQL = "SELECT TOP 10 host, LPAD(port, 5) port, SUBSTRING(REPLACE_REGEXPR('\n' IN statement_string WITH ' ' OCCURRENCE ALL), 1,30) sql_string, statement_hash sql_hash, execution_count, total_execution_memory_size FROM sys.m_sql_plan_cache ORDER BY total_execution_memory_size, execution_count  DESC;"
+  SchemaFilter = []
+  TagFilter = []
+  VersionFilter = ""
+
+  [[Queries.Metrics]]
+    Disabled = false
+    Help = "Top statements memory consumers. Specifies the total size of tracked actual memory consumption in bytes"
+    Labels = ["HOST","PORT","SQL_STRING","SQL_HASH"]
+    MetricType = "gauge"
+    Name = "hanadb_sql_top_mem_consumers"
+    Unit = "byte"
+    ValueColumn = "TOTAL_EXECUTION_MEMORY_SIZE"
+
+  [[Queries.Metrics]]
+    Disabled = false
+    Help = "Top statements time consumers. Number of total executions of the SQL Statement"
+    Labels = ["HOST","PORT","SQL_STRING","SQL_HASH"]
+    MetricType = "gauge"
+    Name = "hanadb_sql_top_mem_consumers"
+    Unit = "count"
+    ValueColumn = "EXECUTION_COUNT"
+
+[[Queries]]
+  Disabled = false
+  SQL = "SELECT TOP 10 TO_VARCHAR(RT.TAKEOVER_START_TIME) START_TIME, MAP(RT.TAKEOVER_END_TIME, NULL, 'N/A', TO_VARCHAR(RT.TAKEOVER_END_TIME)) END_TIME, MAP(SECONDS_BETWEEN(RT.TAKEOVER_START_TIME, RT.TAKEOVER_END_TIME),NULL, -1,SECONDS_BETWEEN(RT.TAKEOVER_START_TIME, RT.TAKEOVER_END_TIME)) DURATION_S, RT.SOURCE_SITE_NAME SRC_SITE_NAME, RT.SOURCE_MASTER_NAMESERVER_HOST SRC_HOST, RT.SITE_NAME TGT_SITE_NAME, RT.MASTER_NAMESERVER_HOST TGT_HOST, RT.TAKEOVER_TYPE TYPE, RT.OPERATION_MODE, MAP(RT.REPLICATION_STATUS,'ACTIVE',0,'ERROR', 4, 'SYNCING',2, 'INITIALIZING',1,'UNKNOWN', 3, 99) REPLICATION_STATUS, TO_VARCHAR(RT.LOG_POSITION_TIME) LOG_POS_TIME, TO_VARCHAR(RT.SHIPPED_LOG_POSITION_TIME) SHIPPED_LOG_POS_TIME, RT.LOG_POSITION, RT.SHIPPED_LOG_POSITION  FROM M_SYSTEM_REPLICATION_TAKEOVER_HISTORY RT;"
+  SchemaFilter = []
+  TagFilter = []
+  VersionFilter = ""
+
+  [[Queries.Metrics]]
+    Disabled = false
+    Help = "System Replication status at takeover time. Values: 0-ACTIVE, 1-INITIALIZING, 2-SYNCING, 3-UNKNOWN, 4-ERROR, 99-UNMAPPED"
+    Labels = ["START_TIME","END_TIME","SRC_SITE_NAME","SRC_HOST","TGT_SITE_NAME","TGT_HOST","OPERATION_MODE","LOG_POS_TIME","SHIPPED_LOG_POS_TIME"]
+    MetricType = "gauge"
+    Name = "hanadb_sr_takeover_replication"
+    Unit = "status"
+    ValueColumn = "REPLICATION_STATUS"
+
+  [[Queries.Metrics]]
+    Disabled = false
+    Help = "System Replication takeover duration time. Returns -1 if cannot be calculated, together with END_TIME=N/A. It is a workaround to when HANA cannot collect this value"
+    Labels = ["START_TIME","END_TIME","SRC_SITE_NAME","SRC_HOST","TGT_SITE_NAME","TGT_HOST","OPERATION_MODE","LOG_POS_TIME","SHIPPED_LOG_POS_TIME"]
+    MetricType = "gauge"
+    Name = "hanadb_sr_takeover_duration_time"
+    Unit = "seconds"
+    ValueColumn = "DURATION_S"
+
+  [[Queries.Metrics]]
+    Disabled = false
+    Help = "Specifies the master log position, that has been reached by takeover"
+    Labels = ["START_TIME","END_TIME","SRC_SITE_NAME","SRC_HOST","TGT_SITE_NAME","TGT_HOST","OPERATION_MODE","LOG_POS_TIME","SHIPPED_LOG_POS_TIME"]
+    MetricType = "gauge"
+    Name = "hanadb_sr_takeover_log_position"
+    Unit = "bigint"
+    ValueColumn = "LOG_POSITION"
+
+  [[Queries.Metrics]]
+    Disabled = false
+    Help = "Specifies the highest master log position that has been shipped before executing takeover"
+    Labels = ["START_TIME","END_TIME","SRC_SITE_NAME","SRC_HOST","TGT_SITE_NAME","TGT_HOST","OPERATION_MODE","LOG_POS_TIME","SHIPPED_LOG_POS_TIME"]
+    MetricType = "gauge"
+    Name = "hanadb_sr_takeover_shipped_log_position"
+    Unit = "bigint"
+    ValueColumn = "SHIPPED_LOG_POSITION"
+
+[[Queries]]
+  Disabled = false
+  SQL = "SELECT host, ROUND(SUM(memory_size_in_total)/1024/1024) column_tables_used_mb FROM sys.m_cs_tables GROUP BY host;"
+  SchemaFilter = []
+  TagFilter = []
+  VersionFilter = ">=1.0.0 <=3.0.0"
+
+  [[Queries.Metrics]]
+    Disabled = false
+    Help = "Column tables total memory used in MB"
+    Labels = ["HOST"]
+    MetricType = "gauge"
+    Name = "hanadb_column_tables_used_memory"
+    Unit = "mb"
+    ValueColumn = "COLUMN_TABLES_USED_MB"
 
 [[Queries]]
   Disabled = false
@@ -192,6 +333,7 @@ log-level = "debug"
     Labels = ["HOST","PORT","FILE_NAME","FILE_TYPE"]
     MetricType = "gauge"
     Name = "hanadb_disk_data_files_used_size"
+    Unit = "mb"
     ValueColumn = "USED_SIZE_MB"
 
   [[Queries.Metrics]]
@@ -200,6 +342,7 @@ log-level = "debug"
     Labels = ["HOST","PORT","FILE_NAME","FILE_TYPE"]
     MetricType = "gauge"
     Name = "hanadb_disk_data_files_total_size"
+    Unit = "mb"
     ValueColumn = "TOTAL_SIZE_MB"
 
   [[Queries.Metrics]]
@@ -208,6 +351,7 @@ log-level = "debug"
     Labels = ["HOST","PORT","FILE_NAME","FILE_TYPE"]
     MetricType = "gauge"
     Name = "hanadb_disk_data_files_available_size"
+    Unit = "mb"
     ValueColumn = "AVAILABLE_SIZE_MB"
 
   [[Queries.Metrics]]
@@ -216,6 +360,7 @@ log-level = "debug"
     Labels = ["HOST","PORT","FILE_NAME","FILE_TYPE"]
     MetricType = "gauge"
     Name = "hanadb_disk_data_files_fragmentation"
+    Unit = "percent"
     ValueColumn = "FRAG_PCT"
 
 [[Queries]]
@@ -231,6 +376,7 @@ log-level = "debug"
     Labels = ["HOST"]
     MetricType = "gauge"
     Name = "hanadb_host_memory_physical_total"
+    Unit = "mb"
     ValueColumn = "HOST_PHYSICAL_MEM_MB"
 
   [[Queries.Metrics]]
@@ -239,6 +385,7 @@ log-level = "debug"
     Labels = ["HOST"]
     MetricType = "gauge"
     Name = "hanadb_host_memory_resident"
+    Unit = "mb"
     ValueColumn = "HOST_RESIDENT_MEM_MB"
 
   [[Queries.Metrics]]
@@ -247,6 +394,7 @@ log-level = "debug"
     Labels = ["HOST"]
     MetricType = "gauge"
     Name = "hanadb_host_memory_physical_free"
+    Unit = "mb"
     ValueColumn = "HOST_FREE_PHYSICAL_MEM_MB"
 
   [[Queries.Metrics]]
@@ -255,6 +403,7 @@ log-level = "debug"
     Labels = ["HOST"]
     MetricType = "gauge"
     Name = "hanadb_host_memory_swap_free"
+    Unit = "mb"
     ValueColumn = "HOST_FREE_SWAP_MB"
 
   [[Queries.Metrics]]
@@ -263,6 +412,7 @@ log-level = "debug"
     Labels = ["HOST"]
     MetricType = "gauge"
     Name = "hanadb_host_memory_swap_used"
+    Unit = "mb"
     ValueColumn = "HOST_USED_SWAP_MB"
 
   [[Queries.Metrics]]
@@ -271,6 +421,7 @@ log-level = "debug"
     Labels = ["HOST"]
     MetricType = "gauge"
     Name = "hanadb_host_memory_alloc_limit"
+    Unit = "mb"
     ValueColumn = "HOST_ALLOC_LIMIT_MB"
 
   [[Queries.Metrics]]
@@ -279,6 +430,7 @@ log-level = "debug"
     Labels = ["HOST"]
     MetricType = "gauge"
     Name = "hanadb_host_memory_used_total"
+    Unit = "mb"
     ValueColumn = "HOST_TOTAL_USED_MEM_MB"
 
   [[Queries.Metrics]]
@@ -287,6 +439,7 @@ log-level = "debug"
     Labels = ["HOST"]
     MetricType = "gauge"
     Name = "hanadb_host_memory_used_peak"
+    Unit = "mb"
     ValueColumn = "HOST_TOTAL_PEAK_USED_MEM_MB"
 
   [[Queries.Metrics]]
@@ -295,6 +448,7 @@ log-level = "debug"
     Labels = ["HOST"]
     MetricType = "gauge"
     Name = "hanadb_host_memory_pool_size"
+    Unit = "mb"
     ValueColumn = "HOST_TOTAL_ALLOC_MEM_MB"
 
   [[Queries.Metrics]]
@@ -303,6 +457,7 @@ log-level = "debug"
     Labels = ["HOST"]
     MetricType = "gauge"
     Name = "hanadb_host_memory_code_size"
+    Unit = "mb"
     ValueColumn = "HOST_CODE_SIZE_MB"
 
   [[Queries.Metrics]]
@@ -311,77 +466,8 @@ log-level = "debug"
     Labels = ["HOST"]
     MetricType = "gauge"
     Name = "hanadb_host_memory_shared_alloc"
+    Unit = "mb"
     ValueColumn = "HOST_SHR_MEM_ALLOC_MB"
-
-[[Queries]]
-  Disabled = false
-  SQL = "SELECT host, LPAD(port, 5) port, site_name, secondary_site_name, secondary_host, LPAD(secondary_port, 5) secondary_port, replication_mode, MAP(secondary_active_status, 'YES', 1,0) secondary_active_status, MAP(UPPER(replication_status),'ACTIVE',0,'ERROR', 4, 'SYNCING',2, 'INITIALIZING',1,'UNKNOWN', 3, 99) replication_status, TO_DECIMAL(SECONDS_BETWEEN(SHIPPED_LOG_POSITION_TIME, LAST_LOG_POSITION_TIME), 10, 2) ship_delay_s, TO_DECIMAL((LAST_LOG_POSITION - SHIPPED_LOG_POSITION) * 64 / 1024 / 1024, 10, 2) async_buff_used_mb, secondary_reconnect_count, secondary_failover_count FROM sys.m_service_replication;"
-  SchemaFilter = []
-  TagFilter = []
-  VersionFilter = ""
-
-  [[Queries.Metrics]]
-    Disabled = false
-    Help = "System Replication log shipping delay in seconds"
-    Labels = ["HOST","PORT","SITE_NAME","SECONDARY_SITE_NAME","SECONDARY_HOST","SECONDARY_PORT","REPLICATION_MODE"]
-    MetricType = "gauge"
-    Name = "hanadb_sr_ship_delay"
-    ValueColumn = "SHIP_DELAY_S"
-
-  [[Queries.Metrics]]
-    Disabled = false
-    Help = "System Replication current filling level of asynchronous log shipping buffer (MB)"
-    Labels = ["HOST","PORT","SITE_NAME","SECONDARY_SITE_NAME","SECONDARY_HOST","SECONDARY_PORT","REPLICATION_MODE"]
-    MetricType = "gauge"
-    Name = "hanadb_sr_async_used_shipping_buffer"
-    ValueColumn = "ASYNC_BUFF_USED_MB"
-
-  [[Queries.Metrics]]
-    Disabled = false
-    Help = "System Replication - Specifies the secondary active status. Values: 0 - INACTIVE and 1 - ACTIVE"
-    Labels = ["HOST","PORT","SITE_NAME","SECONDARY_SITE_NAME","SECONDARY_HOST","SECONDARY_PORT","REPLICATION_MODE"]
-    MetricType = "gauge"
-    Name = "hanadb_sr_secondary_active"
-    ValueColumn = "SECONDARY_ACTIVE_STATUS"
-
-  [[Queries.Metrics]]
-    Disabled = false
-    Help = "System Replication status. Values: 0-ACTIVE, 1-INITIALIZING, 2-SYNCING, 3-UNKNOWN, 4-ERROR, 99-UNMAPPED "
-    Labels = ["HOST","PORT","SITE_NAME","SECONDARY_SITE_NAME","SECONDARY_HOST","SECONDARY_PORT","REPLICATION_MODE"]
-    MetricType = "gauge"
-    Name = "hanadb_sr_replication"
-    ValueColumn = "REPLICATION_STATUS"
-
-  [[Queries.Metrics]]
-    Disabled = false
-    Help = "System Replication secondary reconnect count"
-    Labels = ["HOST","PORT","SITE_NAME","SECONDARY_SITE_NAME","SECONDARY_HOST","SECONDARY_PORT","REPLICATION_MODE"]
-    MetricType = "gauge"
-    Name = "hanadb_sr_secondary_reconnect"
-    ValueColumn = "SECONDARY_RECONNECT_COUNT"
-
-  [[Queries.Metrics]]
-    Disabled = false
-    Help = "System Replication secondary failover count"
-    Labels = ["HOST","PORT","SITE_NAME","SECONDARY_SITE_NAME","SECONDARY_HOST","SECONDARY_PORT","REPLICATION_MODE"]
-    MetricType = "gauge"
-    Name = "hanadb_sr_secondary_failover"
-    ValueColumn = "SECONDARY_FAILOVER_COUNT"
-
-[[Queries]]
-  Disabled = false
-  SQL = "SELECT alert_host host, LPAD(alert_port,5) port, alert_details, alert_useraction,to_varchar(alert_timestamp) alert_timestamp, to_varchar(alert_rating) alert_rating FROM _SYS_STATISTICS.STATISTICS_CURRENT_ALERTS;"
-  SchemaFilter = []
-  TagFilter = []
-  VersionFilter = ""
-
-  [[Queries.Metrics]]
-    Disabled = false
-    Help = "HANA Database current alerts rating"
-    Labels = ["HOST","PORT","ALERT_DETAILS","ALERT_USERACTION","ALERT_TIMESTAMP"]
-    MetricType = "gauge"
-    Name = "hanadb_alerts_current"
-    ValueColumn = "ALERT_RATING"
 
 [[Queries]]
   Disabled = false
@@ -396,6 +482,7 @@ log-level = "debug"
     Labels = ["HOST","INTERFACE"]
     MetricType = "gauge"
     Name = "hanadb_network_collisions_per"
+    Unit = "seconds"
     ValueColumn = "COLL_PER_S"
 
   [[Queries.Metrics]]
@@ -404,6 +491,7 @@ log-level = "debug"
     Labels = ["HOST","INTERFACE"]
     MetricType = "gauge"
     Name = "hanadb_network_receive_rate_kb_per"
+    Unit = "seconds"
     ValueColumn = "RECV_KB_PER_S"
 
   [[Queries.Metrics]]
@@ -412,6 +500,7 @@ log-level = "debug"
     Labels = ["HOST","INTERFACE"]
     MetricType = "gauge"
     Name = "hanadb_network_transmission_rate_kb_per"
+    Unit = "seconds"
     ValueColumn = "TRANS_KB_PER_S"
 
   [[Queries.Metrics]]
@@ -420,6 +509,7 @@ log-level = "debug"
     Labels = ["HOST","INTERFACE"]
     MetricType = "gauge"
     Name = "hanadb_network_receive_requests_per"
+    Unit = "seconds"
     ValueColumn = "RECV_PACK_PER_S"
 
   [[Queries.Metrics]]
@@ -428,6 +518,7 @@ log-level = "debug"
     Labels = ["HOST","INTERFACE"]
     MetricType = "gauge"
     Name = "hanadb_network_transmission_rate_requests_per"
+    Unit = "seconds"
     ValueColumn = "TRANS_PACK_PER_S"
 
   [[Queries.Metrics]]
@@ -436,6 +527,7 @@ log-level = "debug"
     Labels = ["HOST","INTERFACE"]
     MetricType = "gauge"
     Name = "hanadb_network_receive_rate_errors_per"
+    Unit = "seconds"
     ValueColumn = "RECV_ERR_PER_S"
 
   [[Queries.Metrics]]
@@ -444,242 +536,51 @@ log-level = "debug"
     Labels = ["HOST","INTERFACE"]
     MetricType = "gauge"
     Name = "hanadb_network_transmission_rate_errors_per"
+    Unit = "seconds"
     ValueColumn = "TRANS_ERR_PER_S"
 
 [[Queries]]
   Disabled = false
-  SQL = "SELECT HOST, LPAD(PORT, 5) PORT, SERVICE_NAME SERVICE, SQL_TYPE, EXECUTIONS EXECUTIONS, ROUND(ELAPSED_MS) ELAPSED_MS, TO_DECIMAL(ELA_PER_EXEC_MS, 10, 2) ELA_PER_EXEC_MS, TO_DECIMAL(LOCK_PER_EXEC_MS, 10, 2) LOCK_PER_EXEC_MS, ROUND(MAX_ELA_MS) MAX_ELA_MS FROM( SELECT S.HOST, S.PORT, S.SERVICE_NAME, L.SQL_TYPE, CASE L.SQL_TYPE WHEN 'SELECT' THEN SUM(C.SELECT_EXECUTION_COUNT) WHEN 'SELECT FOR UPDATE' THEN SUM(C.SELECT_FOR_UPDATE_COUNT) WHEN 'INSERT/UPDATE/DELETE' THEN SUM(C.UPDATE_COUNT) WHEN 'READ ONLY TRANSACTION' THEN SUM(C.READ_ONLY_TRANSACTION_COUNT) WHEN 'UPDATE TRANSACTION' THEN SUM(C.UPDATE_TRANSACTION_COUNT) WHEN 'ROLLBACK' THEN SUM(C.ROLLBACK_COUNT) WHEN 'OTHERS' THEN SUM(C.OTHERS_COUNT) WHEN 'PREPARE' THEN SUM(C.TOTAL_PREPARATION_COUNT) END EXECUTIONS, CASE L.SQL_TYPE WHEN 'SELECT' THEN SUM(C.SELECT_TOTAL_EXECUTION_TIME) / 1000 WHEN 'SELECT FOR UPDATE' THEN SUM(C.SELECT_FOR_UPDATE_TOTAL_EXECUTION_TIME) / 1000 WHEN 'INSERT/UPDATE/DELETE' THEN SUM(C.UPDATE_TOTAL_EXECUTION_TIME) / 1000 WHEN 'READ ONLY TRANSACTION' THEN SUM(C.READ_ONLY_TRANSACTION_TOTAL_EXECUTION_TIME) / 1000 WHEN 'UPDATE TRANSACTION' THEN SUM(C.UPDATE_TRANSACTION_TOTAL_EXECUTION_TIME) / 1000 WHEN 'ROLLBACK' THEN SUM(C.ROLLBACK_TOTAL_EXECUTION_TIME) / 1000 WHEN 'OTHERS' THEN SUM(C.OTHERS_TOTAL_EXECUTION_TIME) / 1000 WHEN 'PREPARE' THEN SUM(C.TOTAL_PREPARATION_TIME) / 1000 END ELAPSED_MS, CASE L.SQL_TYPE WHEN 'SELECT' THEN MAP(SUM(C.SELECT_EXECUTION_COUNT), 0, 0, SUM(C.SELECT_TOTAL_EXECUTION_TIME) / 1000 / SUM(C.SELECT_EXECUTION_COUNT)) WHEN 'SELECT FOR UPDATE' THEN MAP(SUM(C.SELECT_FOR_UPDATE_COUNT), 0, 0, SUM(C.SELECT_FOR_UPDATE_TOTAL_EXECUTION_TIME) / 1000 / SUM(C.SELECT_FOR_UPDATE_COUNT)) WHEN 'INSERT/UPDATE/DELETE' THEN MAP(SUM(C.UPDATE_COUNT), 0, 0, SUM(C.UPDATE_TOTAL_EXECUTION_TIME) / 1000 / SUM(C.UPDATE_COUNT)) WHEN 'READ ONLY TRANSACTION' THEN MAP(SUM(C.READ_ONLY_TRANSACTION_COUNT), 0, 0, SUM(C.READ_ONLY_TRANSACTION_TOTAL_EXECUTION_TIME) / 1000 / SUM(C.READ_ONLY_TRANSACTION_COUNT)) WHEN 'UPDATE TRANSACTION' THEN MAP(SUM(C.UPDATE_TRANSACTION_COUNT), 0, 0, SUM(C.UPDATE_TRANSACTION_TOTAL_EXECUTION_TIME) / 1000 / SUM(C.UPDATE_TRANSACTION_COUNT)) WHEN 'ROLLBACK' THEN MAP(SUM(C.ROLLBACK_COUNT), 0, 0, SUM(C.ROLLBACK_TOTAL_EXECUTION_TIME) / 1000 / SUM(C.ROLLBACK_COUNT)) WHEN 'OTHERS' THEN MAP(SUM(C.OTHERS_COUNT), 0, 0, SUM(C.OTHERS_TOTAL_EXECUTION_TIME) / 1000 / SUM(C.OTHERS_COUNT)) WHEN 'PREPARE' THEN MAP(SUM(C.TOTAL_PREPARATION_COUNT), 0, 0, SUM(C.TOTAL_PREPARATION_TIME) / 1000 / SUM(C.TOTAL_PREPARATION_COUNT)) END ELA_PER_EXEC_MS, CASE L.SQL_TYPE WHEN 'SELECT' THEN 0 WHEN 'SELECT FOR UPDATE' THEN MAP(SUM(C.SELECT_FOR_UPDATE_COUNT), 0, 0, SUM(C.SELECT_FOR_UPDATE_TOTAL_LOCK_WAIT_TIME) / 1000 / SUM(C.SELECT_FOR_UPDATE_COUNT)) WHEN 'INSERT/UPDATE/DELETE' THEN MAP(SUM(C.UPDATE_COUNT), 0, 0, SUM(C.UPDATE_TOTAL_LOCK_WAIT_TIME) / 1000 / SUM(C.UPDATE_COUNT)) WHEN 'READ ONLY TRANSACTION' THEN 0 WHEN 'UPDATE TRANSACTION' THEN 0 WHEN 'ROLLBACK' THEN 0 WHEN 'OTHERS' THEN MAP(SUM(C.OTHERS_COUNT), 0, 0, SUM(C.OTHERS_TOTAL_LOCK_WAIT_TIME) / 1000 / SUM(C.OTHERS_COUNT)) WHEN 'PREPARE' THEN 0 END LOCK_PER_EXEC_MS, CASE L.SQL_TYPE WHEN 'SELECT' THEN MAX(C.SELECT_MAX_EXECUTION_TIME) / 1000 WHEN 'SELECT FOR UPDATE' THEN MAX(C.SELECT_FOR_UPDATE_MAX_EXECUTION_TIME) / 1000 WHEN 'INSERT/UPDATE/DELETE' THEN MAX(C.UPDATE_MAX_EXECUTION_TIME) / 1000 WHEN 'READ ONLY TRANSACTION' THEN MAX(C.READ_ONLY_TRANSACTION_MAX_EXECUTION_TIME) / 1000 WHEN 'UPDATE TRANSACTION' THEN MAX(C.UPDATE_TRANSACTION_MAX_EXECUTION_TIME) / 1000 WHEN 'ROLLBACK' THEN MAX(C.ROLLBACK_MAX_EXECUTION_TIME) / 1000 WHEN 'OTHERS' THEN MAX(C.OTHERS_MAX_EXECUTION_TIME) / 1000 WHEN 'PREPARE' THEN MAX(C.MAX_PREPARATION_TIME) / 1000 END MAX_ELA_MS FROM SYS.M_SERVICES S, ( SELECT 1 LINE_NO, 'SELECT' SQL_TYPE FROM DUMMY UNION ALL ( SELECT 2, 'SELECT FOR UPDATE' FROM DUMMY ) UNION ALL ( SELECT 3, 'INSERT/UPDATE/DELETE' FROM DUMMY ) UNION ALL ( SELECT 4, 'READ ONLY TRANSACTION' FROM DUMMY ) UNION ALL ( SELECT 5, 'UPDATE TRANSACTION' FROM DUMMY ) UNION ALL ( SELECT 6, 'ROLLBACK' FROM DUMMY ) UNION ALL ( SELECT 7, 'OTHERS' FROM DUMMY ) UNION ALL ( SELECT 8, 'PREPARE' FROM DUMMY ) ) L, SYS.M_CONNECTION_STATISTICS C WHERE C.HOST = S.HOST AND C.PORT = S.PORT GROUP BY S.HOST, S.PORT, S.SERVICE_NAME, L.SQL_TYPE, L.LINE_NO);"
+  SQL = "SELECT md.host, md.usage_type, md.path, md.filesystem_type, TO_DECIMAL(md.total_device_size / 1024 / 1024, 10, 2) total_device_size_mb, TO_DECIMAL(md.total_size / 1024 / 1024, 10, 2) total_size_mb, TO_DECIMAL(md.used_size / 1024 / 1024, 10, 2) total_used_size_mb, TO_DECIMAL(du.used_size / 1024 / 1024, 10, 2) used_size_mb FROM sys.m_disk_usage du, sys.m_disks md WHERE du.host = md.host AND du.usage_type = md.usage_type;"
   SchemaFilter = []
   TagFilter = []
   VersionFilter = ""
 
   [[Queries.Metrics]]
     Disabled = false
-    Help = "Total number of SQL statements executions by service and SQL type"
-    Labels = ["HOST","PORT","SERVICE","SQL_TYPE"]
+    Help = "Total device size returned by the operating system (in MB). It will be repeated if the device is shared between usages_types."
+    Labels = ["HOST","USAGE_TYPE","PATH","FILESYSTEM_TYPE"]
     MetricType = "gauge"
-    Name = "hanadb_sql_service_executions"
-    ValueColumn = "EXECUTIONS"
+    Name = "hanadb_disk_total_device_size"
+    Unit = "mb"
+    ValueColumn = "TOTAL_DEVICE_SIZE_MB"
 
   [[Queries.Metrics]]
     Disabled = false
-    Help = "Total elapsed time of SQL statements executions by service and SQL type in miliseconds"
-    Labels = ["HOST","PORT","SERVICE","SQL_TYPE"]
+    Help = "Specifies the volume size in MB. It will be repeated if the volume is shared between usages_types."
+    Labels = ["HOST","USAGE_TYPE","PATH","FILESYSTEM_TYPE"]
     MetricType = "gauge"
-    Name = "hanadb_sql_service_elapsed_time"
-    ValueColumn = "ELAPSED_MS"
+    Name = "hanadb_disk_total_size"
+    Unit = "mb"
+    ValueColumn = "TOTAL_SIZE_MB"
 
   [[Queries.Metrics]]
     Disabled = false
-    Help = "Average elapsed time per execution by service and SQL type in miliseconds"
-    Labels = ["HOST","PORT","SERVICE","SQL_TYPE"]
+    Help = "Specifies the used volume size in MB. It will be repeated if the volume is shared between usages_types."
+    Labels = ["HOST","USAGE_TYPE","PATH","FILESYSTEM_TYPE"]
     MetricType = "gauge"
-    Name = "hanadb_sql_service_elap_per_exec_avg"
-    ValueColumn = "ELA_PER_EXEC_MS"
+    Name = "hanadb_disk_total_used_size"
+    Unit = "mb"
+    ValueColumn = "TOTAL_USED_SIZE_MB"
 
   [[Queries.Metrics]]
     Disabled = false
-    Help = "Average lock wait time per execution by service and SQL type in miliseconds"
-    Labels = ["HOST","PORT","SERVICE","SQL_TYPE"]
+    Help = "Size of used disk space in MB based on usage_type"
+    Labels = ["HOST","USAGE_TYPE","PATH","FILESYSTEM_TYPE"]
     MetricType = "gauge"
-    Name = "hanadb_sql_service_lock_per_exec"
-    ValueColumn = "LOCK_PER_EXEC_MS"
-
-  [[Queries.Metrics]]
-    Disabled = false
-    Help = "Maximum elapsed time per execution by service and SQL type in miliseconds"
-    Labels = ["HOST","PORT","SERVICE","SQL_TYPE"]
-    MetricType = "gauge"
-    Name = "hanadb_sql_service_max_ela_time"
-    ValueColumn = "MAX_ELA_MS"
-
-[[Queries]]
-  Disabled = false
-  SQL = "SELECT TOP 10 host, LPAD(port, 5) port, SUBSTRING(REPLACE_REGEXPR('\n' IN statement_string WITH ' ' OCCURRENCE ALL), 1,30) sql_string, statement_hash sql_hash, execution_count, total_execution_time + total_preparation_time total_elapsed_time FROM sys.m_sql_plan_cache ORDER BY total_elapsed_time, execution_count DESC;"
-  SchemaFilter = []
-  TagFilter = []
-  VersionFilter = ""
-
-  [[Queries.Metrics]]
-    Disabled = false
-    Help = "Top statements time consumers. Sum of the time consumed in all executions in Microseconds"
-    Labels = ["HOST","PORT","SQL_STRING","SQL_HASH"]
-    MetricType = "gauge"
-    Name = "hanadb_sql_top_time_consumers_total"
-    ValueColumn = "TOTAL_ELAPSED_TIME"
-
-  [[Queries.Metrics]]
-    Disabled = false
-    Help = "Top statements time consumers. Number of total executions of the SQL Statement"
-    Labels = ["HOST","PORT","SQL_STRING","SQL_HASH"]
-    MetricType = "gauge"
-    Name = "hanadb_sql_top_time_consumers"
-    ValueColumn = "EXECUTION_COUNT"
-
-[[Queries]]
-  Disabled = false
-  SQL = "SELECT m.host, LPAD(m.port, 5) port, m.service_name service, TO_DECIMAL(m.shared_memory_allocated_size / 1024 / 1024, 10, 2) shm_alloc_mb, TO_DECIMAL(m.shared_memory_used_size / 1024 / 1024, 10, 2) shm_used_mb, TO_DECIMAL(MAP(m.shared_memory_allocated_size, 0, 0, m.shared_memory_used_size / m.shared_memory_allocated_size * 100), 10, 2) shm_used_pct, TO_DECIMAL(m.heap_memory_allocated_size / 1024 / 1024, 10, 2) heap_alloc_mb, TO_DECIMAL(m.heap_memory_used_size / 1024 / 1024, 10, 2) heap_used_mb, TO_DECIMAL(MAP(m.heap_memory_allocated_size, 0, 0, m.heap_memory_used_size / m.heap_memory_allocated_size * 100), 10, 2) heap_used_pct, TO_DECIMAL(m.total_memory_used_size / 1024 / 1024, 10, 2) total_memory_used_mb, TO_DECIMAL(m.physical_memory_size / 1024 / 1024, 10, 2) total_phys_mem_mb, TO_DECIMAL(m.logical_memory_size / 1024 / 1024, 10, 2) total_logical_mem_mb, TO_DECIMAL(m.code_size / 1024 / 1024, 10, 2) code_size_mem_mb, TO_DECIMAL(m.stack_size / 1024 / 1024, 10, 2) stack_size_mem_mb, TO_DECIMAL(m.compactors_freeable_size / 1024 / 1024, 10, 2) compactors_freeable_size_mem_mb,   TO_DECIMAL(m.compactors_allocated_size / 1024 / 1024, 10, 2) compactors_allocated_size_mem_mb, TO_DECIMAL(m.allocation_limit / 1024 / 1024, 10, 2) process_alloc_limit_mb, TO_DECIMAL(m.effective_allocation_limit / 1024 / 1024, 10, 2) effective_proc_alloc_limit_mb FROM sys.m_service_memory m;"
-  SchemaFilter = []
-  TagFilter = []
-  VersionFilter = ""
-
-  [[Queries.Metrics]]
-    Disabled = false
-    Help = "Allocated Shared Memory part of the memory pool per service in MB"
-    Labels = ["HOST","PORT","SERVICE"]
-    MetricType = "gauge"
-    Name = "hanadb_memory_service_shared_allocated"
-    ValueColumn = "SHM_ALLOC_MB"
-
-  [[Queries.Metrics]]
-    Disabled = false
-    Help = "Used Shared Memory part of the memory pool per service in MB"
-    Labels = ["HOST","PORT","SERVICE"]
-    MetricType = "gauge"
-    Name = "hanadb_memory_service_shared_used_mb"
-    ValueColumn = "SHM_USED_MB"
-
-  [[Queries.Metrics]]
-    Disabled = false
-    Help = "Percentage of used Shared Memory from the memory pool per service"
-    Labels = ["HOST","PORT","SERVICE"]
-    MetricType = "gauge"
-    Name = "hanadb_memory_service_shared_used_pct"
-    ValueColumn = "SHM_USED_PCT"
-
-  [[Queries.Metrics]]
-    Disabled = false
-    Help = "Allocated Heap Memory part of the memory pool per service in MB"
-    Labels = ["HOST","PORT","SERVICE"]
-    MetricType = "gauge"
-    Name = "hanadb_memory_service_heap_allocated"
-    ValueColumn = "HEAP_ALLOC_MB"
-
-  [[Queries.Metrics]]
-    Disabled = false
-    Help = "Used Heap Memory part of the memory pool per service in MB"
-    Labels = ["HOST","PORT","SERVICE"]
-    MetricType = "gauge"
-    Name = "hanadb_memory_service_heap_used_mb"
-    ValueColumn = "HEAP_USED_MB"
-
-  [[Queries.Metrics]]
-    Disabled = false
-    Help = "Percentage of used Heap Memory part of the memory pool per service"
-    Labels = ["HOST","PORT","SERVICE"]
-    MetricType = "gauge"
-    Name = "hanadb_memory_service_heap_used_pct"
-    ValueColumn = "HEAP_USED_PCT"
-
-  [[Queries.Metrics]]
-    Disabled = false
-    Help = "Total memory from the memory pool used per services in MB"
-    Labels = ["HOST","PORT","SERVICE"]
-    MetricType = "gauge"
-    Name = "hanadb_memory_service_total_used"
-    ValueColumn = "TOTAL_MEMORY_USED_MB"
-
-  [[Queries.Metrics]]
-    Disabled = false
-    Help = "Total physical resident memory size (operating system perspective) per service in MB"
-    Labels = ["HOST","PORT","SERVICE"]
-    MetricType = "gauge"
-    Name = "hanadb_memory_service_physical_total"
-    ValueColumn = "TOTAL_PHYS_MEM_MB"
-
-  [[Queries.Metrics]]
-    Disabled = false
-    Help = "Total Virtual memory size (operating system perspective) per service in MB"
-    Labels = ["HOST","PORT","SERVICE"]
-    MetricType = "gauge"
-    Name = "hanadb_memory_service_virtual_total"
-    ValueColumn = "TOTAL_LOGICAL_MEM_MB"
-
-  [[Queries.Metrics]]
-    Disabled = false
-    Help = "Code size, including shared libraries, per service in MB"
-    Labels = ["HOST","PORT","SERVICE"]
-    MetricType = "gauge"
-    Name = "hanadb_memory_service_code_size"
-    ValueColumn = "CODE_SIZE_MEM_MB"
-
-  [[Queries.Metrics]]
-    Disabled = false
-    Help = "Stack size per service in MB"
-    Labels = ["HOST","PORT","SERVICE"]
-    MetricType = "gauge"
-    Name = "hanadb_memory_service_stack_size"
-    ValueColumn = "STACK_SIZE_MEM_MB"
-
-  [[Queries.Metrics]]
-    Disabled = false
-    Help = "Memory that can be freed during a memory shortage per service in MB"
-    Labels = ["HOST","PORT","SERVICE"]
-    MetricType = "gauge"
-    Name = "hanadb_memory_service_compactors_freeable_size"
-    ValueColumn = "COMPACTORS_FREEABLE_SIZE_MEM_MB"
-
-  [[Queries.Metrics]]
-    Disabled = false
-    Help = "Part of the memory pool that can potentially (if unpinned) be freed during a memory shortage per service in MB"
-    Labels = ["HOST","PORT","SERVICE"]
-    MetricType = "gauge"
-    Name = "hanadb_memory_service_compactors_allocated_size"
-    ValueColumn = "COMPACTORS_ALLOCATED_SIZE_MEM_MB"
-
-  [[Queries.Metrics]]
-    Disabled = false
-    Help = "Maximum memory pool size (configurable value) per service in MB"
-    Labels = ["HOST","PORT","SERVICE"]
-    MetricType = "gauge"
-    Name = "hanadb_memory_service_alloc_limit"
-    ValueColumn = "PROCESS_ALLOC_LIMIT_MB"
-
-  [[Queries.Metrics]]
-    Disabled = false
-    Help = "Effective maximum memory pool size, considering the pool sizes of other processes (computed value) per service in MB"
-    Labels = ["HOST","PORT","SERVICE"]
-    MetricType = "gauge"
-    Name = "hanadb_memory_service_effective_alloc_limit"
-    ValueColumn = "PROCESS_ALLOC_LIMIT_MB"
-
-[[Queries]]
-  Disabled = false
-  SQL = "SELECT TOP 10 host, LPAD(port, 5) port, SUBSTRING(REPLACE_REGEXPR('\n' IN statement_string WITH ' ' OCCURRENCE ALL), 1,30) sql_string, statement_hash sql_hash, execution_count, total_execution_memory_size FROM sys.m_sql_plan_cache ORDER BY total_execution_memory_size, execution_count  DESC;"
-  SchemaFilter = []
-  TagFilter = []
-  VersionFilter = ""
-
-  [[Queries.Metrics]]
-    Disabled = false
-    Help = "Top statements memory consumers. Specifies the total size of tracked actual memory consumption in bytes"
-    Labels = ["HOST","PORT","SQL_STRING","SQL_HASH"]
-    MetricType = "gauge"
-    Name = "hanadb_sql_top_mem_consumers"
-    ValueColumn = "TOTAL_EXECUTION_MEMORY_SIZE"
-
-  [[Queries.Metrics]]
-    Disabled = false
-    Help = "Top statements time consumers. Number of total executions of the SQL Statement"
-    Labels = ["HOST","PORT","SQL_STRING","SQL_HASH"]
-    MetricType = "gauge"
-    Name = "hanadb_sql_top_mem_consumers"
-    ValueColumn = "EXECUTION_COUNT"
-
-[[Queries]]
-  Disabled = false
-  SQL = "SELECT host, LPAD(port, 5) port, connection_type, MAP(connection_status,'','N/A', connection_status) connection_status, COUNT(1) total_connections FROM SYS.M_CONNECTIONS  GROUP BY host, port, connection_status, connection_type;"
-  SchemaFilter = []
-  TagFilter = []
-  VersionFilter = ""
-
-  [[Queries.Metrics]]
-    Disabled = false
-    Help = "Number of connections grouped by Type and Status"
-    Labels = ["HOST","PORT","CONNECTION_TYPE","CONNECTION_STATUS"]
-    MetricType = "gauge"
-    Name = "hanadb_connections_total"
-    ValueColumn = "TOTAL_CONNECTIONS"
+    Name = "hanadb_disk_used_size"
+    Unit = "mb"
+    ValueColumn = "USED_SIZE_MB"
 
 [[Queries]]
   Disabled = false
@@ -694,6 +595,7 @@ log-level = "debug"
     Labels = ["HOST","PORT","SCHEMA_NAME","TABLE_NAME"]
     MetricType = "gauge"
     Name = "hanadb_table_cs_top_mem_total"
+    Unit = "mb"
     ValueColumn = "MEMORY_SIZE_IN_TOTAL_MB"
 
   [[Queries.Metrics]]
@@ -702,6 +604,7 @@ log-level = "debug"
     Labels = ["HOST","PORT","SCHEMA_NAME","TABLE_NAME"]
     MetricType = "gauge"
     Name = "hanadb_table_cs_top_mem_estimated_max"
+    Unit = "mb"
     ValueColumn = "ESTIMATED_MAX_MEM_TOTAL_MB"
 
   [[Queries.Metrics]]
@@ -710,6 +613,7 @@ log-level = "debug"
     Labels = ["HOST","PORT","SCHEMA_NAME","TABLE_NAME"]
     MetricType = "gauge"
     Name = "hanadb_table_cs_top_mem_record"
+    Unit = "count"
     ValueColumn = "RECORD_COUNT"
 
   [[Queries.Metrics]]
@@ -718,43 +622,218 @@ log-level = "debug"
     Labels = ["HOST","PORT","SCHEMA_NAME","TABLE_NAME"]
     MetricType = "gauge"
     Name = "hanadb_table_cs_top_mem_disk_size"
+    Unit = "mb"
     ValueColumn = "DISK_SIZE_MB"
 
 [[Queries]]
   Disabled = false
-  SQL = "SELECT TOP 10 TO_VARCHAR(RT.TAKEOVER_START_TIME) START_TIME, MAP(RT.TAKEOVER_END_TIME, NULL, 'N/A', TO_VARCHAR(RT.TAKEOVER_END_TIME)) END_TIME, MAP(SECONDS_BETWEEN(RT.TAKEOVER_START_TIME, RT.TAKEOVER_END_TIME),NULL, -1,SECONDS_BETWEEN(RT.TAKEOVER_START_TIME, RT.TAKEOVER_END_TIME)) DURATION_S, RT.SOURCE_SITE_NAME SRC_SITE_NAME, RT.SOURCE_MASTER_NAMESERVER_HOST SRC_HOST, RT.SITE_NAME TGT_SITE_NAME, RT.MASTER_NAMESERVER_HOST TGT_HOST, RT.TAKEOVER_TYPE TYPE, RT.OPERATION_MODE, MAP(RT.REPLICATION_STATUS,'ACTIVE',0,'ERROR', 4, 'SYNCING',2, 'INITIALIZING',1,'UNKNOWN', 3, 99) REPLICATION_STATUS, TO_VARCHAR(RT.LOG_POSITION_TIME) LOG_POS_TIME, TO_VARCHAR(RT.SHIPPED_LOG_POSITION_TIME) SHIPPED_LOG_POS_TIME, RT.LOG_POSITION, RT.SHIPPED_LOG_POSITION  FROM M_SYSTEM_REPLICATION_TAKEOVER_HISTORY RT;"
+  SQL = "SELECT host, LPAD(port, 5) port, site_name, secondary_site_name, secondary_host, LPAD(secondary_port, 5) secondary_port, replication_mode, MAP(secondary_active_status, 'YES', 1,0) secondary_active_status, MAP(UPPER(replication_status),'ACTIVE',0,'ERROR', 4, 'SYNCING',2, 'INITIALIZING',1,'UNKNOWN', 3, 99) replication_status, TO_DECIMAL(SECONDS_BETWEEN(SHIPPED_LOG_POSITION_TIME, LAST_LOG_POSITION_TIME), 10, 2) ship_delay_s, TO_DECIMAL((LAST_LOG_POSITION - SHIPPED_LOG_POSITION) * 64 / 1024 / 1024, 10, 2) async_buff_used_mb, secondary_reconnect_count, secondary_failover_count FROM sys.m_service_replication;"
   SchemaFilter = []
   TagFilter = []
   VersionFilter = ""
 
   [[Queries.Metrics]]
     Disabled = false
-    Help = "System Replication status at takeover time. Values: 0-ACTIVE, 1-INITIALIZING, 2-SYNCING, 3-UNKNOWN, 4-ERROR, 99-UNMAPPED"
-    Labels = ["START_TIME","END_TIME","SRC_SITE_NAME","SRC_HOST","TGT_SITE_NAME","TGT_HOST","OPERATION_MODE","LOG_POS_TIME","SHIPPED_LOG_POS_TIME"]
+    Help = "System Replication log shipping delay in seconds"
+    Labels = ["HOST","PORT","SITE_NAME","SECONDARY_SITE_NAME","SECONDARY_HOST","SECONDARY_PORT","REPLICATION_MODE"]
     MetricType = "gauge"
-    Name = "hanadb_sr_takeover_replication"
+    Name = "hanadb_sr_ship_delay"
+    Unit = "seconds"
+    ValueColumn = "SHIP_DELAY_S"
+
+  [[Queries.Metrics]]
+    Disabled = false
+    Help = "System Replication current filling level of asynchronous log shipping buffer (MB)"
+    Labels = ["HOST","PORT","SITE_NAME","SECONDARY_SITE_NAME","SECONDARY_HOST","SECONDARY_PORT","REPLICATION_MODE"]
+    MetricType = "gauge"
+    Name = "hanadb_sr_async_used_shipping_buffer"
+    Unit = "mb"
+    ValueColumn = "ASYNC_BUFF_USED_MB"
+
+  [[Queries.Metrics]]
+    Disabled = false
+    Help = "System Replication - Specifies the secondary active status. Values: 0 - INACTIVE and 1 - ACTIVE"
+    Labels = ["HOST","PORT","SITE_NAME","SECONDARY_SITE_NAME","SECONDARY_HOST","SECONDARY_PORT","REPLICATION_MODE"]
+    MetricType = "gauge"
+    Name = "hanadb_sr_secondary_active"
+    Unit = "status"
+    ValueColumn = "SECONDARY_ACTIVE_STATUS"
+
+  [[Queries.Metrics]]
+    Disabled = false
+    Help = "System Replication status. Values: 0-ACTIVE, 1-INITIALIZING, 2-SYNCING, 3-UNKNOWN, 4-ERROR, 99-UNMAPPED "
+    Labels = ["HOST","PORT","SITE_NAME","SECONDARY_SITE_NAME","SECONDARY_HOST","SECONDARY_PORT","REPLICATION_MODE"]
+    MetricType = "gauge"
+    Name = "hanadb_sr_replication"
+    Unit = "status"
     ValueColumn = "REPLICATION_STATUS"
 
   [[Queries.Metrics]]
     Disabled = false
-    Help = "System Replication takeover duration time. Returns -1 if cannot be calculated, together with END_TIME=N/A. It is a workaround to when HANA cannot collect this value"
-    Labels = ["START_TIME","END_TIME","SRC_SITE_NAME","SRC_HOST","TGT_SITE_NAME","TGT_HOST","OPERATION_MODE","LOG_POS_TIME","SHIPPED_LOG_POS_TIME"]
+    Help = "System Replication secondary reconnect count"
+    Labels = ["HOST","PORT","SITE_NAME","SECONDARY_SITE_NAME","SECONDARY_HOST","SECONDARY_PORT","REPLICATION_MODE"]
     MetricType = "gauge"
-    Name = "hanadb_sr_takeover_duration_time"
-    ValueColumn = "DURATION_S"
+    Name = "hanadb_sr_secondary_reconnect"
+    Unit = "count"
+    ValueColumn = "SECONDARY_RECONNECT_COUNT"
 
   [[Queries.Metrics]]
     Disabled = false
-    Help = "Specifies the master log position, that has been reached by takeover"
-    Labels = ["START_TIME","END_TIME","SRC_SITE_NAME","SRC_HOST","TGT_SITE_NAME","TGT_HOST","OPERATION_MODE","LOG_POS_TIME","SHIPPED_LOG_POS_TIME"]
+    Help = "System Replication secondary failover count"
+    Labels = ["HOST","PORT","SITE_NAME","SECONDARY_SITE_NAME","SECONDARY_HOST","SECONDARY_PORT","REPLICATION_MODE"]
     MetricType = "gauge"
-    Name = "hanadb_sr_takeover_log_position"
-    ValueColumn = "LOG_POSITION"
+    Name = "hanadb_sr_secondary_failover"
+    Unit = "count"
+    ValueColumn = "SECONDARY_FAILOVER_COUNT"
+
+[[Queries]]
+  Disabled = false
+  SQL = "SELECT host, schema_name, ROUND(SUM(memory_size_in_total)/1024/1024) schema_memory_used_mb FROM sys.m_cs_tables GROUP BY host, schema_name;"
+  SchemaFilter = []
+  TagFilter = []
+  VersionFilter = ">=1.0.0"
 
   [[Queries.Metrics]]
     Disabled = false
-    Help = "Specifies the highest master log position that has been shipped before executing takeover"
-    Labels = ["START_TIME","END_TIME","SRC_SITE_NAME","SRC_HOST","TGT_SITE_NAME","TGT_HOST","OPERATION_MODE","LOG_POS_TIME","SHIPPED_LOG_POS_TIME"]
+    Help = "Total used memory by schema in MB"
+    Labels = ["HOST","SCHEMA_NAME"]
     MetricType = "gauge"
-    Name = "hanadb_sr_takeover_shipped_log_position"
-    ValueColumn = "SHIPPED_LOG_POSITION"
+    Name = "hanadb_schema_used_memory"
+    Unit = "mb"
+    ValueColumn = "SCHEMA_MEMORY_USED_MB"
+
+[[Queries]]
+  Disabled = false
+  SQL = "SELECT MAX(TIMESTAMP) TIMESTAMP, HOST, MEASURED_ELEMENT_NAME CORE, SUM(MAP(CAPTION, 'User Time', TO_NUMBER(VALUE), 0)) USER_PCT, SUM(MAP(CAPTION, 'System Time', TO_NUMBER(VALUE), 0)) SYSTEM_PCT, SUM(MAP(CAPTION, 'Wait Time', TO_NUMBER(VALUE), 0)) WAITIO_PCT, SUM(MAP(CAPTION, 'Idle Time', 0, TO_NUMBER(VALUE))) BUSY_PCT, SUM(MAP(CAPTION, 'Idle Time', TO_NUMBER(VALUE), 0)) IDLE_PCT FROM sys.M_HOST_AGENT_METRICS WHERE MEASURED_ELEMENT_TYPE = 'Processor' GROUP BY HOST, MEASURED_ELEMENT_NAME;"
+  SchemaFilter = []
+  TagFilter = []
+  VersionFilter = ""
+
+  [[Queries.Metrics]]
+    Disabled = false
+    Help = "Percentage of CPU time spent by HANA DB in user space, over the last minute (in seconds)"
+    Labels = ["HOST","CORE"]
+    MetricType = "gauge"
+    Name = "hanadb_cpu_user"
+    Unit = "percent"
+    ValueColumn = "USER_PCT"
+
+  [[Queries.Metrics]]
+    Disabled = false
+    Help = "Percentage of CPU time spent by HANA DB in Kernel space, over the last minute (in seconds)"
+    Labels = ["HOST","CORE"]
+    MetricType = "gauge"
+    Name = "hanadb_cpu_system"
+    Unit = "percent"
+    ValueColumn = "SYSTEM_PCT"
+
+  [[Queries.Metrics]]
+    Disabled = false
+    Help = "Percentage of CPU time spent by HANA DB in IO mode, over the last minute (in seconds)"
+    Labels = ["HOST","CORE"]
+    MetricType = "gauge"
+    Name = "hanadb_cpu_waitio"
+    Unit = "percent"
+    ValueColumn = "WAITIO_PCT"
+
+  [[Queries.Metrics]]
+    Disabled = false
+    Help = "Percentage of CPU time spent by HANA DB, over the last minute (in seconds)"
+    Labels = ["HOST","CORE"]
+    MetricType = "gauge"
+    Name = "hanadb_cpu_busy"
+    Unit = "percent"
+    ValueColumn = "BUSY_PCT"
+
+  [[Queries.Metrics]]
+    Disabled = false
+    Help = "Percentage of CPU time not spent by HANA DB, over the last minute (in seconds)"
+    Labels = ["HOST","CORE"]
+    MetricType = "gauge"
+    Name = "hanadb_cpu_idle"
+    Unit = "percent"
+    ValueColumn = "IDLE_PCT"
+
+[[Queries]]
+  Disabled = false
+  SQL = "SELECT HOST, LPAD(PORT, 5) PORT, SERVICE_NAME SERVICE, SQL_TYPE, EXECUTIONS EXECUTIONS, ROUND(ELAPSED_MS) ELAPSED_MS, TO_DECIMAL(ELA_PER_EXEC_MS, 10, 2) ELA_PER_EXEC_MS, TO_DECIMAL(LOCK_PER_EXEC_MS, 10, 2) LOCK_PER_EXEC_MS, ROUND(MAX_ELA_MS) MAX_ELA_MS FROM( SELECT S.HOST, S.PORT, S.SERVICE_NAME, L.SQL_TYPE, CASE L.SQL_TYPE WHEN 'SELECT' THEN SUM(C.SELECT_EXECUTION_COUNT) WHEN 'SELECT FOR UPDATE' THEN SUM(C.SELECT_FOR_UPDATE_COUNT) WHEN 'INSERT/UPDATE/DELETE' THEN SUM(C.UPDATE_COUNT) WHEN 'READ ONLY TRANSACTION' THEN SUM(C.READ_ONLY_TRANSACTION_COUNT) WHEN 'UPDATE TRANSACTION' THEN SUM(C.UPDATE_TRANSACTION_COUNT) WHEN 'ROLLBACK' THEN SUM(C.ROLLBACK_COUNT) WHEN 'OTHERS' THEN SUM(C.OTHERS_COUNT) WHEN 'PREPARE' THEN SUM(C.TOTAL_PREPARATION_COUNT) END EXECUTIONS, CASE L.SQL_TYPE WHEN 'SELECT' THEN SUM(C.SELECT_TOTAL_EXECUTION_TIME) / 1000 WHEN 'SELECT FOR UPDATE' THEN SUM(C.SELECT_FOR_UPDATE_TOTAL_EXECUTION_TIME) / 1000 WHEN 'INSERT/UPDATE/DELETE' THEN SUM(C.UPDATE_TOTAL_EXECUTION_TIME) / 1000 WHEN 'READ ONLY TRANSACTION' THEN SUM(C.READ_ONLY_TRANSACTION_TOTAL_EXECUTION_TIME) / 1000 WHEN 'UPDATE TRANSACTION' THEN SUM(C.UPDATE_TRANSACTION_TOTAL_EXECUTION_TIME) / 1000 WHEN 'ROLLBACK' THEN SUM(C.ROLLBACK_TOTAL_EXECUTION_TIME) / 1000 WHEN 'OTHERS' THEN SUM(C.OTHERS_TOTAL_EXECUTION_TIME) / 1000 WHEN 'PREPARE' THEN SUM(C.TOTAL_PREPARATION_TIME) / 1000 END ELAPSED_MS, CASE L.SQL_TYPE WHEN 'SELECT' THEN MAP(SUM(C.SELECT_EXECUTION_COUNT), 0, 0, SUM(C.SELECT_TOTAL_EXECUTION_TIME) / 1000 / SUM(C.SELECT_EXECUTION_COUNT)) WHEN 'SELECT FOR UPDATE' THEN MAP(SUM(C.SELECT_FOR_UPDATE_COUNT), 0, 0, SUM(C.SELECT_FOR_UPDATE_TOTAL_EXECUTION_TIME) / 1000 / SUM(C.SELECT_FOR_UPDATE_COUNT)) WHEN 'INSERT/UPDATE/DELETE' THEN MAP(SUM(C.UPDATE_COUNT), 0, 0, SUM(C.UPDATE_TOTAL_EXECUTION_TIME) / 1000 / SUM(C.UPDATE_COUNT)) WHEN 'READ ONLY TRANSACTION' THEN MAP(SUM(C.READ_ONLY_TRANSACTION_COUNT), 0, 0, SUM(C.READ_ONLY_TRANSACTION_TOTAL_EXECUTION_TIME) / 1000 / SUM(C.READ_ONLY_TRANSACTION_COUNT)) WHEN 'UPDATE TRANSACTION' THEN MAP(SUM(C.UPDATE_TRANSACTION_COUNT), 0, 0, SUM(C.UPDATE_TRANSACTION_TOTAL_EXECUTION_TIME) / 1000 / SUM(C.UPDATE_TRANSACTION_COUNT)) WHEN 'ROLLBACK' THEN MAP(SUM(C.ROLLBACK_COUNT), 0, 0, SUM(C.ROLLBACK_TOTAL_EXECUTION_TIME) / 1000 / SUM(C.ROLLBACK_COUNT)) WHEN 'OTHERS' THEN MAP(SUM(C.OTHERS_COUNT), 0, 0, SUM(C.OTHERS_TOTAL_EXECUTION_TIME) / 1000 / SUM(C.OTHERS_COUNT)) WHEN 'PREPARE' THEN MAP(SUM(C.TOTAL_PREPARATION_COUNT), 0, 0, SUM(C.TOTAL_PREPARATION_TIME) / 1000 / SUM(C.TOTAL_PREPARATION_COUNT)) END ELA_PER_EXEC_MS, CASE L.SQL_TYPE WHEN 'SELECT' THEN 0 WHEN 'SELECT FOR UPDATE' THEN MAP(SUM(C.SELECT_FOR_UPDATE_COUNT), 0, 0, SUM(C.SELECT_FOR_UPDATE_TOTAL_LOCK_WAIT_TIME) / 1000 / SUM(C.SELECT_FOR_UPDATE_COUNT)) WHEN 'INSERT/UPDATE/DELETE' THEN MAP(SUM(C.UPDATE_COUNT), 0, 0, SUM(C.UPDATE_TOTAL_LOCK_WAIT_TIME) / 1000 / SUM(C.UPDATE_COUNT)) WHEN 'READ ONLY TRANSACTION' THEN 0 WHEN 'UPDATE TRANSACTION' THEN 0 WHEN 'ROLLBACK' THEN 0 WHEN 'OTHERS' THEN MAP(SUM(C.OTHERS_COUNT), 0, 0, SUM(C.OTHERS_TOTAL_LOCK_WAIT_TIME) / 1000 / SUM(C.OTHERS_COUNT)) WHEN 'PREPARE' THEN 0 END LOCK_PER_EXEC_MS, CASE L.SQL_TYPE WHEN 'SELECT' THEN MAX(C.SELECT_MAX_EXECUTION_TIME) / 1000 WHEN 'SELECT FOR UPDATE' THEN MAX(C.SELECT_FOR_UPDATE_MAX_EXECUTION_TIME) / 1000 WHEN 'INSERT/UPDATE/DELETE' THEN MAX(C.UPDATE_MAX_EXECUTION_TIME) / 1000 WHEN 'READ ONLY TRANSACTION' THEN MAX(C.READ_ONLY_TRANSACTION_MAX_EXECUTION_TIME) / 1000 WHEN 'UPDATE TRANSACTION' THEN MAX(C.UPDATE_TRANSACTION_MAX_EXECUTION_TIME) / 1000 WHEN 'ROLLBACK' THEN MAX(C.ROLLBACK_MAX_EXECUTION_TIME) / 1000 WHEN 'OTHERS' THEN MAX(C.OTHERS_MAX_EXECUTION_TIME) / 1000 WHEN 'PREPARE' THEN MAX(C.MAX_PREPARATION_TIME) / 1000 END MAX_ELA_MS FROM SYS.M_SERVICES S, ( SELECT 1 LINE_NO, 'SELECT' SQL_TYPE FROM DUMMY UNION ALL ( SELECT 2, 'SELECT FOR UPDATE' FROM DUMMY ) UNION ALL ( SELECT 3, 'INSERT/UPDATE/DELETE' FROM DUMMY ) UNION ALL ( SELECT 4, 'READ ONLY TRANSACTION' FROM DUMMY ) UNION ALL ( SELECT 5, 'UPDATE TRANSACTION' FROM DUMMY ) UNION ALL ( SELECT 6, 'ROLLBACK' FROM DUMMY ) UNION ALL ( SELECT 7, 'OTHERS' FROM DUMMY ) UNION ALL ( SELECT 8, 'PREPARE' FROM DUMMY ) ) L, SYS.M_CONNECTION_STATISTICS C WHERE C.HOST = S.HOST AND C.PORT = S.PORT GROUP BY S.HOST, S.PORT, S.SERVICE_NAME, L.SQL_TYPE, L.LINE_NO);"
+  SchemaFilter = []
+  TagFilter = []
+  VersionFilter = ""
+
+  [[Queries.Metrics]]
+    Disabled = false
+    Help = "Total number of SQL statements executions by service and SQL type"
+    Labels = ["HOST","PORT","SERVICE","SQL_TYPE"]
+    MetricType = "gauge"
+    Name = "hanadb_sql_service_executions"
+    Unit = "count"
+    ValueColumn = "EXECUTIONS"
+
+  [[Queries.Metrics]]
+    Disabled = false
+    Help = "Total elapsed time of SQL statements executions by service and SQL type in miliseconds"
+    Labels = ["HOST","PORT","SERVICE","SQL_TYPE"]
+    MetricType = "gauge"
+    Name = "hanadb_sql_service_elapsed_time"
+    Unit = "ms"
+    ValueColumn = "ELAPSED_MS"
+
+  [[Queries.Metrics]]
+    Disabled = false
+    Help = "Average elapsed time per execution by service and SQL type in miliseconds"
+    Labels = ["HOST","PORT","SERVICE","SQL_TYPE"]
+    MetricType = "gauge"
+    Name = "hanadb_sql_service_elap_per_exec_avg"
+    Unit = "ms"
+    ValueColumn = "ELA_PER_EXEC_MS"
+
+  [[Queries.Metrics]]
+    Disabled = false
+    Help = "Average lock wait time per execution by service and SQL type in miliseconds"
+    Labels = ["HOST","PORT","SERVICE","SQL_TYPE"]
+    MetricType = "gauge"
+    Name = "hanadb_sql_service_lock_per_exec"
+    Unit = "ms"
+    ValueColumn = "LOCK_PER_EXEC_MS"
+
+  [[Queries.Metrics]]
+    Disabled = false
+    Help = "Maximum elapsed time per execution by service and SQL type in miliseconds"
+    Labels = ["HOST","PORT","SERVICE","SQL_TYPE"]
+    MetricType = "gauge"
+    Name = "hanadb_sql_service_max_ela_time"
+    Unit = "ms"
+    ValueColumn = "MAX_ELA_MS"
+
+[[Queries]]
+  Disabled = false
+  SQL = "SELECT host, LPAD(port, 5) port, connection_type, MAP(connection_status,'','N/A', connection_status) connection_status, COUNT(1) total_connections FROM SYS.M_CONNECTIONS  GROUP BY host, port, connection_status, connection_type;"
+  SchemaFilter = []
+  TagFilter = []
+  VersionFilter = ""
+
+  [[Queries.Metrics]]
+    Disabled = false
+    Help = "Number of connections grouped by Type and Status"
+    Labels = ["HOST","PORT","CONNECTION_TYPE","CONNECTION_STATUS"]
+    MetricType = "gauge"
+    Name = "hanadb_connections_total"
+    Unit = "count"
+    ValueColumn = "TOTAL_CONNECTIONS"
+
+[[Queries]]
+  Disabled = false
+  SQL = "SELECT alert_host host, LPAD(alert_port,5) port, alert_details, alert_useraction,to_varchar(alert_timestamp) alert_timestamp, to_varchar(alert_rating) alert_rating FROM _SYS_STATISTICS.STATISTICS_CURRENT_ALERTS;"
+  SchemaFilter = []
+  TagFilter = []
+  VersionFilter = ""
+
+  [[Queries.Metrics]]
+    Disabled = false
+    Help = "HANA Database current alerts rating"
+    Labels = ["HOST","PORT","ALERT_DETAILS","ALERT_USERACTION","ALERT_TIMESTAMP"]
+    MetricType = "gauge"
+    Name = "hanadb_alerts_current"
+    Unit = "rating"
+    ValueColumn = "ALERT_RATING"

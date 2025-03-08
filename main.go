@@ -21,6 +21,7 @@ import (
 )
 
 func main() {
+	
 	log.SetFormatter(&log.TextFormatter{
 		DisableColors:   true,
 		FullTimestamp:   true,

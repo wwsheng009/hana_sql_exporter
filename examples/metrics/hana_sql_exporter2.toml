@@ -1,5 +1,5 @@
 
-log-level = "debug"
+LogLevel = "debug"
 
 [[metrics]]
   Help = "Status of last hana backup."
