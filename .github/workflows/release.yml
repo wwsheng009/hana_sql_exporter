@@ -58,26 +58,23 @@ jobs:
             echo "Error: Build failed for $GOOS/$GOARCH"
             exit 1
           fi
+
+          # 复制服务配置文件
+          if [ "${{ matrix.platform }}" = "linux" ]; then
+            cp hana_sql_exporter@.service "$BUILD_DIR/"
+            cp install.sh "$BUILD_DIR/"
+            cp examples/metrics/demo.toml "$BUILD_DIR/hana_sql_exporter.toml"
+          fi
           
           # 创建压缩文件
           if [ "${{ matrix.platform }}" = "windows" ]; then
-            BINARY="$BUILD_DIR/hana_sql_exporter.exe"
-            OUTPUT="build/artifacts/hana_sql_exporter_${GOOS}_${GOARCH}.exe.gz"
+            OUTPUT="build/artifacts/hana_sql_exporter_${GOOS}_${GOARCH}.zip"
+            cd "$BUILD_DIR"
+            zip -r "../../$OUTPUT" .
           else
-            BINARY="$BUILD_DIR/hana_sql_exporter"
-            OUTPUT="build/artifacts/hana_sql_exporter_${GOOS}_${GOARCH}.gz"
-          fi
-          
-          # 检查二进制文件是否存在
-          if [ ! -f "$BINARY" ]; then
-            echo "Error: Binary not found at $BINARY"
-            exit 1
-          fi
-          
-          # 压缩文件
-          if ! gzip -c "$BINARY" > "$OUTPUT"; then
-            echo "Error: Compression failed for $BINARY"
-            exit 1
+            OUTPUT="build/artifacts/hana_sql_exporter_${GOOS}_${GOARCH}.tar.gz"
+            cd "$BUILD_DIR"
+            tar -czf "../../$OUTPUT" .
           fi
           
           echo "Successfully built and packaged for $GOOS/$GOARCH"
@@ -86,7 +83,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: hana_sql_exporter-${{ matrix.platform }}-${{ matrix.arch }}
-          path: build/artifacts/*.gz
+          path: build/artifacts/*.*
           retention-days: 1
           if-no-files-found: error
           overwrite: false
@@ -119,6 +116,6 @@ jobs:
       - name: Upload Release Assets
         uses: softprops/action-gh-release@v1
         with:
-          files: artifacts/**/*.gz
+          files: artifacts/**/*.*
           body_path: RELEASE_NOTES.md
           token: ${{ secrets.GITHUB_TOKEN }}
