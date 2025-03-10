@@ -66,29 +66,30 @@ The file contains a Tenants slice followed by a Metrics Slice:
   Disabled = false
 
 # Multi-metric query configuration example
-[[Metrics]]
-  Name = "hdb_operation_metrics"
+[[Queries]]
   SQL = "SELECT operation_name, duration, error_code FROM <SCHEMA>.operations"
   TagFilter = ["abap"]
   SchemaFilter = ["sapabap1"]
   VersionFilter = ">= 2.00.040"
   Disabled = false
 
-  [[Metrics.Labels]]
-    Name = "operation"
-    ValueColumn = "operation_name"
-
-  [[Metrics.Values]]
+  [[Queries.Metrics]]
     Name = "hdb_operation_duration"
     Help = "Operation duration in milliseconds"
     MetricType = "gauge"
     ValueColumn = "duration"
+    Unit = "ms"
+    Labels = ["operation"]
+    Disabled = false
 
-  [[Metrics.Values]]
+  [[Queries.Metrics]]
     Name = "hdb_operation_errors"
     Help = "Number of failed operations"
     MetricType = "counter"
     ValueColumn = "error_code"
+    Unit = ""
+    Labels = ["operation"]
+    Disabled = false
 ```
 
 Below is a description of the tenant and metric struct fields:
@@ -101,6 +102,13 @@ Below is a description of the tenant and metric struct fields:
 | Tags       | string array | Tags describing the system | ["abap", "erp"], ["systemdb"], ["java"] |
 | ConnStr | string       | Connection string \<hostname\>:\<tenant sql port\> - the sql port can be selected in the following way on the system db: "select database_name,sql_port from sys_databases.m_services"  | "host.domain:31041" | 
 | User       | string       | Tenant database user name | |
+| Usage      | string       | Additional information about tenant usage | "Production", "Test" |
+| Schemas    | string array | Available schemas for the tenant | ["SAPABAP1", "SAPHANADB"] |
+| SID        | string       | SAP System ID | "PRD", "DEV" |
+| InstanceNumber | string   | SAP instance number | "00", "01" |
+| DatabaseName | string     | Database name | "HDB", "SYSTEMDB" |
+| Version    | string       | Database version | "2.00.040" |
+| Index      | int          | Tenant index in configuration | 0, 1, 2 |
 
 #### Metric information
 
@@ -114,7 +122,31 @@ Below is a description of the tenant and metric struct fields:
 | SQL          | string       | The select is responsible for the data retrieval. Conventionally the first column must represent the value of the metric. The following columns are used as labels and must be string values. The tenant name and the tenant usage are default labels for every metric and need not to be added in the select. | "select days_between(start_time, current_timestamp) as uptime, version from \<SCHEMA\>.m_database" (SCHEMA uppercase) |
 | VersionFilter | string | Version filter (supports format: ">= 2.00.048"), execute this metric only when the tenant database version meets the condition | ">= 2.00.048" |
 | ValueColumn   | string | Specifies the column name in the result set used for the metric value (used when SQL returns multiple numerical columns) | "uptime" |
+| Unit          | string | Unit of measurement for the metric | "ms", "bytes" |
 | Disabled      | bool   | When set to true, disables collection of this metric | false |
+
+#### Query Information
+
+| Field        | Type         | Description | Example |
+| ------------ | ------------ |------------ | ------- |
+| SQL          | string       | SQL query to execute | "SELECT operation_name, duration FROM operations" |
+| TagFilter    | string array | The query will only be executed if all values correspond with the existing tenant tags | ["abap", "erp"] |
+| SchemaFilter | string array | The query will only be used if the tenant user has one of schemas in SchemaFilter assigned | ["sapabap1", "sapewm"] |
+| Metrics      | QueryMetricInfo array | Array of metrics to generate from this query | See QueryMetricInfo table |
+| VersionFilter | string | Version filter (supports format: ">= 2.00.048") | ">= 2.00.048" |
+| Disabled     | bool   | When set to true, disables this query | false |
+
+#### Query Metric Information
+
+| Field       | Type         | Description | Example |
+| ----------- | ------------ |------------ | ------- |
+| Name        | string       | Metric name | "hdb_operation_duration" | 
+| Help        | string       | Metric help text | "Operation duration in milliseconds" |
+| MetricType  | string       | Type of metric | "counter" or "gauge" |
+| ValueColumn | string       | Column name in result set used for metric value | "duration" |
+| Unit        | string       | Unit of measurement | "ms", "bytes" |
+| Labels      | string array | Column names to use as labels | ["operation"] |
+| Disabled    | bool         | When set to true, disables this metric | false |
 
 #### Database passwords
 

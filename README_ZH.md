@@ -1,4 +1,3 @@
-
 ## SAP Hana SQL Exporter for Prometheus  [![CircleCI](https://circleci.com/gh/ulranh/hana_sql_exporter/tree/master.svg?style=svg)](https://circleci.com/gh/ulranh/hana_sql_exporter) [![Go Report Card](https://goreportcard.com/badge/github.com/ulranh/hana_sql_exporter)](https://goreportcard.com/report/github.com/ulranh/hana_sql_exporter)  [![Docker Pulls](https://img.shields.io/docker/pulls/ulranh/hana-sql-exporter)](https://hub.docker.com/r/ulranh/hana-sql-exporter)
 
 该项目旨在通过 [Prometheus](https://prometheus.io) 和 [Grafana](https://grafana.com) 来支持对 SAP 和 SAP HanaDB 实例的监控。
@@ -54,6 +53,7 @@ $ grant select on schema <schema> to <user>;
   TagFilter = []
   SchemaFilter = [] # sys schema 将被自动添加
   SQL = "select (case when state_name = 'successful' then 0 when state_name = 'running' then 1 else -1 end) as val, entry_type_name as type from <SCHEMA>.m_backup_catalog where entry_id in (select max(entry_id) from m_backup_catalog group by entry_type_name)"
+  Disabled = false
 
 [[Metrics]]
   Name = "hdb_cancelled_jobs"
@@ -78,14 +78,18 @@ $ grant select on schema <schema> to <user>;
     Help = "操作耗时（毫秒）"
     MetricType = "gauge"
     ValueColumn = "duration"
+    Unit = "ms"
     Labels = ["operation"]
+    Disabled = false
 
   [[Queries.Metrics]]
     Name = "hdb_operation_errors"
     Help = "失败操作数量"
     MetricType = "counter"
     ValueColumn = "error_code"
+    Unit = ""
     Labels = ["operation"]
+    Disabled = false
 ```
 
 以下是租户和指标结构字段的说明：
@@ -98,6 +102,13 @@ $ grant select on schema <schema> to <user>;
 | Tags       | string array | 描述系统的标签 | ["abap", "erp"], ["systemdb"], ["java"] |
 | ConnStr    | string       | 连接字符串 \<hostname\>:\<tenant sql port\> - SQL 端口可以在系统数据库中通过以下方式查询："select database_name,sql_port from sys_databases.m_services" | "host.domain:31041" |
 | User       | string       | 租户数据库用户名 | |
+| Usage      | string       | 租户用途的附加信息 | "Production", "Test" |
+| Schemas    | string array | 租户可用的schemas | ["SAPABAP1", "SAPHANADB"] |
+| SID        | string       | SAP系统ID | "PRD", "DEV" |
+| InstanceNumber | string   | SAP实例编号 | "00", "01" |
+| DatabaseName | string     | 数据库名称 | "HDB", "SYSTEMDB" |
+| Version    | string       | 数据库版本 | "2.00.040" |
+| Index      | int          | 租户在配置中的索引 | 0, 1, 2 |
 
 #### 指标信息
 
@@ -111,7 +122,31 @@ $ grant select on schema <schema> to <user>;
 | SQL          | string       | 该 select 语句负责数据检索。按照惯例，第一列必须表示指标的值。后续列用作标签，必须是字符串值。租户名称和租户用途是每个指标的默认标签，无需在 select 语句中添加 | "select days_between(start_time, current_timestamp) as uptime, version from \<SCHEMA\>.m_database" (SCHEMA 大写) |
 | VersionFilter | string | 版本过滤条件（支持格式：">= 2.00.048"），仅当租户数据库版本符合条件时执行该指标 | ">= 2.00.048" |
 | ValueColumn   | string | 指定结果集中用于指标值的列名（当SQL返回多列数值时使用） | "uptime" |
+| Unit          | string | 指标的计量单位 | "ms", "bytes" |
 | Disabled      | bool   | 当设为true时禁用该指标采集 | false |
+
+#### 查询信息
+
+| 字段        | 类型         | 说明 | 示例 |
+| ------------ | ------------ |------------ | ------- |
+| SQL          | string       | 要执行的SQL查询 | "SELECT operation_name, duration FROM operations" |
+| TagFilter    | string array | 仅当所有值与现有租户标签相对应时，才会执行该查询 | ["abap", "erp"] |
+| SchemaFilter | string array | 仅当租户用户具有SchemaFilter中的某个schema的权限时，才会使用该查询 | ["sapabap1", "sapewm"] |
+| Metrics      | QueryMetricInfo数组 | 从此查询生成的指标数组 | 参见查询指标信息表 |
+| VersionFilter | string | 版本过滤条件（支持格式：">= 2.00.048"） | ">= 2.00.048" |
+| Disabled     | bool   | 当设为true时禁用此查询 | false |
+
+#### 查询指标信息
+
+| 字段       | 类型         | 说明 | 示例 |
+| ----------- | ------------ |------------ | ------- |
+| Name        | string       | 指标名称 | "hdb_operation_duration" | 
+| Help        | string       | 指标帮助文本 | "操作耗时（毫秒）" |
+| MetricType  | string       | 指标类型 | "counter" 或 "gauge" |
+| ValueColumn | string       | 结果集中用于指标值的列名 | "duration" |
+| Unit        | string       | 计量单位 | "ms", "bytes" |
+| Labels      | string array | 用作标签的列名 | ["operation"] |
+| Disabled    | bool         | 当设为true时禁用此指标 | false |
 
 #### 数据库密码
 

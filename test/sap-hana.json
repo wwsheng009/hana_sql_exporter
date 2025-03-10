@@ -1268,7 +1268,7 @@
         "timeShift": null,
         "title": "Alert details",
         "transform": "table",
-        "type": "table-old"
+        "type": "table"
       },
       {
         "collapsed": false,
