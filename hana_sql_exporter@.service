@@ -1,11 +1,15 @@
 [Unit]
 Description=SAP HANA SQL metrics exporter
 Documentation=https://github.com/wwsheng009/hana_sql_exporter
+After=network.target
 
 [Service]
 Type=simple
+Restart=always
 WorkingDirectory=/opt/exporter/hana_sql_exporter/
 ExecStart=/opt/exporter/hana_sql_exporter/hana_sql_exporter web --config /opt/exporter/hana_sql_exporter/%i.toml
+ExecReload=/bin/kill -HUP $MAINPID
 
 [Install]
 WantedBy=multi-user.target
+DefaultInstance=default
