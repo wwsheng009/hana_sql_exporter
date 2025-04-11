@@ -9,6 +9,10 @@ Restart=always
 WorkingDirectory=/opt/exporter/hana_sql_exporter/
 ExecStart=/opt/exporter/hana_sql_exporter/hana_sql_exporter web --config /opt/exporter/hana_sql_exporter/%i.toml
 ExecReload=/bin/kill -HUP $MAINPID
+RestartSec=5s
+PrivateTmp=true
+TimeoutStartSec=30s
+TimeoutStopSec=30s
 
 [Install]
 WantedBy=multi-user.target
