@@ -165,17 +165,17 @@ $ ./hana_sql_exporter pw --tenant q01,qj1 --config ./hana_sql_exporter.toml
 Now the web server can be started:
 #### Binary
 
-The default port is 9658 which can be changed with the -port flag. The standard timeout is set to 10 seconds, which means that if a scrape for one metric and tenant takes more than 10 seconds, it will be aborted. This is normally only the case, if a tenant is overloaded or the selects are really extensive. In my experience the scrapes for 25 tenants and 30 metrics in one config file take approximately 250ms altogether, if all tenants are responsive. Normally I set the timeout flag to 5 seconds, the scrape timeout for the corresponding Prometheus job to 10 seconds and the scrape intervall to one minute.
+The default port is 9888 which can be changed with the -port flag. The standard timeout is set to 10 seconds, which means that if a scrape for one metric and tenant takes more than 10 seconds, it will be aborted. This is normally only the case, if a tenant is overloaded or the selects are really extensive. In my experience the scrapes for 25 tenants and 30 metrics in one config file take approximately 250ms altogether, if all tenants are responsive. Normally I set the timeout flag to 5 seconds, the scrape timeout for the corresponding Prometheus job to 10 seconds and the scrape intervall to one minute.
 
 ```
 $ ./hana_sql_exporter web --config ./hana_sql_exporter.toml --timeout 5
 ```
-Then you should be able to find the desired metrics after calling ``localhost:9658/metrics`` in the browser.
+Then you should be able to find the desired metrics after calling ``localhost:9888/metrics`` in the browser.
 
 #### Docker
 The Docker image can be downloaded from Docker Hub or built with the Dockerfile. Then it can be started as follows:
 ```
-$ docker run -d --name=hana_exporter --restart=always -p 9658:9658 -v /home/<user>/.hana_sql_exporter.toml:/app/.hana_sql_exporter.toml <image name>
+$ docker run -d --name=hana_exporter --restart=always -p 9888:9888 -v /home/<user>/.hana_sql_exporter.toml:/app/.hana_sql_exporter.toml <image name>
 ```
 #### Kubernetes
 An example config can be found in the examples folder. First of all create a sap namespace. Then apply the created configfile as configmap and start the deployment:
@@ -197,9 +197,9 @@ The necessary entries in the prometheus configfile can look something like the f
   - job_name: sap
         scrape_interval: 60s
         static_configs:
-          - targets: ['172.45.111.105:9658']
+          - targets: ['172.45.111.105:9888']
             labels:  {'instance': 'hana-exporter-test'}
-          - targets: ['hana-exporter.sap.svc.cluster.local:9658']
+          - targets: ['hana-exporter.sap.svc.cluster.local:9888']
             labels:  {'instance': 'hana-exporter-dev'}
 ```
 

@@ -77,7 +77,15 @@ var webCmd = &cobra.Command{
 				exit("Problem with timeout flag: ", err)
 			}
 		}
-
+		if config.Ip == "" {
+			config.Ip, err = cmd.Flags().GetString("ip")
+			if err != nil {
+				exit("Problem with ip flag: ", err)
+			}
+			if config.Ip == ""  {
+				config.Ip = "127.0.0.1"
+			}
+		}
 		if config.Port == "" {
 			config.Port, err = cmd.Flags().GetString("port")
 			if err != nil {
@@ -124,7 +132,8 @@ func init() {
 	RootCmd.AddCommand(webCmd)
 
 	webCmd.PersistentFlags().UintP("timeout", "t", 30, "scrape timeout of the hana_sql_exporter in seconds.")
-	webCmd.PersistentFlags().StringP("port", "p", "9658", "port, the hana_sql_exporter listens to.")
+	webCmd.PersistentFlags().StringP("ip", "i", "0.0.0.0", "ip, the hana_sql_exporter listens to.")
+	webCmd.PersistentFlags().StringP("port", "p", "9888", "port, the hana_sql_exporter listens to.")
 	webCmd.PersistentFlags().StringP("log-file", "l", "log.log", "logfile, the logfile location")
 	webCmd.PersistentFlags().String("log-level", "error", "logfile, the log level")
 }
@@ -290,14 +299,14 @@ func (config *Config) Web() error {
 	handler := promhttp.HandlerFor(prometheus.DefaultGatherer, handlerOpts)
 
 	// start http server
-	log.WithField("port", config.Port).Info("启动HTTP服务器")
+	log.WithField("ip", config.Ip).WithField("port", config.Port).Info("启动HTTP服务器")
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", handler)
 	mux.HandleFunc("/health", HealthHandler) // 添加健康检查接口
 	mux.HandleFunc("/", RootHandler)
 
 	server := &http.Server{
-		Addr:         ":" + config.Port,
+		Addr:         config.Ip + ":" + config.Port,
 		Handler:      mux,
 		WriteTimeout: time.Duration(config.Timeout+2) * time.Second,
 		ReadTimeout:  time.Duration(config.Timeout+2) * time.Second,
@@ -330,9 +339,9 @@ func (config *Config) Web() error {
 		return errors.Wrap(err, "web(ListenAndServe)")
 	}
 	log.WithFields(log.Fields{
-		"url": fmt.Sprintf("http://localhost:%s", config.Port),
+		"url": fmt.Sprintf("http://%s:%s", config.Ip,config.Port),
 	}).Info("服务启动成功，可以通过以下地址访问")
-	fmt.Printf("服务启动成功，可以通过以下地址访问: http://localhost:%s\n", config.Port)
+	fmt.Printf("服务启动成功，可以通过以下地址访问: http://%s:%s\n", config.Ip,config.Port)
 	return nil
 }
 

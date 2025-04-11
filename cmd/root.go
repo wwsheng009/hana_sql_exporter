@@ -93,6 +93,7 @@ type Config struct {
 	DataFunc      func(mPos, tPos int) []MetricRecord `mapstructure:"-"`
 	QueryDataFunc func(qPos, tPos int) []MetricData  `mapstructure:"-"`// 新增的多指标数据获取函数
 	Timeout       uint
+	Ip			  string
 	Port          string
 	LogLevel      string
 	LogFile       string
@@ -193,7 +194,7 @@ func (config *Config) getConnection(tId int, secretMap internal.Secret) *sql.DB 
 	if err := db.Ping(); err != nil {
 		log.WithFields(log.Fields{
 			"tenant": config.Tenants[tId].Name,
-		}).Error("Cannot ping tenant. Perhaps wrong password?")
+		}).Error("Cannot ping tenant:" + err.Error())
 		return nil
 	}
 	return db
@@ -204,6 +205,9 @@ func (config *Config) dbConnect(tId int, pw string) *sql.DB {
 
 	connector, err := goHdbDriver.NewDSNConnector("hdb://" + config.Tenants[tId].User + ":" + pw + "@" + config.Tenants[tId].ConnStr)
 	if err != nil {
+		log.WithFields(log.Fields{
+			"tenant": config.Tenants[tId].Name,
+		}).Error(err.Error())
 		return nil
 	}
 	connector.SetTimeout(time.Duration(config.Timeout) * time.Second)

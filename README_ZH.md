@@ -22,6 +22,7 @@ $ go build
 $ create user <user> password <pw> no force_first_password_change;
 $ alter user <user> disable password lifetime;
 $ grant catalog read to <user>;
+$ grant monitoring to <user>;
 
 # 使用具有授权的用户登录：
 $ grant select on schema <schema> to <user>;
@@ -165,17 +166,17 @@ $ ./hana_sql_exporter pw --tenant q01,qj1 --config ./hana_sql_exporter.toml
 现在可以启动 Web 服务器：
 #### 二进制文件
 
-默认端口为 9658，可以通过 -port 标志更改。标准超时设置为 10 秒，这意味着如果一个指标和租户的抓取时间超过 10 秒，它将被中止。这种情况通常只发生在租户过载或 select 语句非常复杂时。根据经验，如果所有租户都响应正常，一个配置文件中 25 个租户和 30 个指标的抓取总共大约需要 250ms。通常我会将超时标志设置为 5 秒，相应的 Prometheus 作业的抓取超时设置为 10 秒，抓取间隔设置为一分钟。
+默认端口为 9888，可以通过 -port 标志更改。标准超时设置为 10 秒，这意味着如果一个指标和租户的抓取时间超过 10 秒，它将被中止。这种情况通常只发生在租户过载或 select 语句非常复杂时。根据经验，如果所有租户都响应正常，一个配置文件中 25 个租户和 30 个指标的抓取总共大约需要 250ms。通常我会将超时标志设置为 5 秒，相应的 Prometheus 作业的抓取超时设置为 10 秒，抓取间隔设置为一分钟。
 
 ```
 $ ./hana_sql_exporter web --config ./hana_sql_exporter.toml --timeout 5
 ```
-然后，您应该可以在浏览器中访问 `localhost:9658/metrics` 来查看所需的指标。
+然后，您应该可以在浏览器中访问 `localhost:9888/metrics` 来查看所需的指标。
 
 #### Docker
 Docker 镜像可以从 Docker Hub 下载或使用 Dockerfile 构建。然后可以按以下方式启动：
 ```
-$ docker run -d --name=hana_exporter --restart=always -p 9658:9658 -v /home/<user>/.hana_sql_exporter.toml:/app/.hana_sql_exporter.toml <image name>
+$ docker run -d --name=hana_exporter --restart=always -p 9888:9888 -v /home/<user>/.hana_sql_exporter.toml:/app/.hana_sql_exporter.toml <image name>
 ```
 
 #### Kubernetes
@@ -199,9 +200,9 @@ Prometheus 配置文件中的必要条目可能如下所示：
   - job_name: sap
         scrape_interval: 60s
         static_configs:
-          - targets: ['172.45.111.105:9658']
+          - targets: ['172.45.111.105:9888']
             labels:  {'instance': 'hana-exporter-test'}
-          - targets: ['hana-exporter.sap.svc.cluster.local:9658']
+          - targets: ['hana-exporter.sap.svc.cluster.local:9888']
             labels:  {'instance': 'hana-exporter-dev'}
 ```
 

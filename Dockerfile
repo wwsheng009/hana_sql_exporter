@@ -18,5 +18,5 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build
 FROM scratch
 COPY --from=builder /app/hana_sql_exporter /app/
 
-EXPOSE 9658
+EXPOSE 9888
 ENTRYPOINT ["/app/hana_sql_exporter","web","--config","/app/hana_sql_exporter.toml","--timeout","5"]

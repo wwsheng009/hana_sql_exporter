@@ -72,7 +72,7 @@ jobs:
           # 复制服务配置文件
           if [ "${{ matrix.platform }}" = "linux" ]; then
             cp hana_sql_exporter@.service "$BUILD_DIR/"
-            cp install.sh "$BUILD_DIR/"
+            cp hana_sql_exporter.sh "$BUILD_DIR/"
             cp examples/metrics/demo.toml "$BUILD_DIR/hana_sql_exporter.toml"
           fi
           

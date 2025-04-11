@@ -19,7 +19,7 @@ spec:
       - name: hana-sql-exporter
         image: ulranh/hana-sql-exporter:latest
         ports:
-        - containerPort: 9658
+        - containerPort: 9888
         volumeMounts:
           - name: config-volume
             mountPath: /app/hana_sql_exporter.toml
@@ -39,7 +39,7 @@ metadata:
 spec:
   ports:
   - name: http
-    port: 9658
-    targetPort: 9658
+    port: 9888
+    targetPort: 9888
   selector:
     app: hana-sql-exporter

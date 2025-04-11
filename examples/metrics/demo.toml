@@ -2,10 +2,10 @@
 LogLevel = "debug"
 
 [[tenants]]
-  ConnStr = "172.18.3.30:30015"
+  ConnStr = "127.0.0.1:30013"
   Name = "HDB"
   Tags = ["abap"]
-  User = "SAPHANADB"
+  User = "HANA_MONITOR"
 
 
 [[Queries]]
@@ -213,7 +213,7 @@ LogLevel = "debug"
 
 [[Queries]]
   Disabled = false
-  SQL = "SELECT TOP 10 host, LPAD(port, 5) port, SUBSTRING(REPLACE_REGEXPR('\n' IN statement_string WITH ' ' OCCURRENCE ALL), 1,30) sql_string, statement_hash sql_hash, execution_count, total_execution_time + total_preparation_time total_elapsed_time FROM sys.m_sql_plan_cache ORDER BY total_elapsed_time, execution_count DESC;"
+  SQL = "SELECT TOP 10 host, LPAD(port, 5) port,PLAN_ID, SUBSTRING(REPLACE_REGEXPR('\n' IN statement_string WITH ' ' OCCURRENCE ALL), 1,30) sql_string, statement_hash sql_hash, execution_count, total_execution_time + total_preparation_time total_elapsed_time FROM sys.m_sql_plan_cache ORDER BY total_elapsed_time, execution_count DESC;"
   SchemaFilter = []
   TagFilter = []
   VersionFilter = ""
@@ -221,7 +221,7 @@ LogLevel = "debug"
   [[Queries.Metrics]]
     Disabled = false
     Help = "Top statements time consumers. Sum of the time consumed in all executions in Microseconds"
-    Labels = ["HOST","PORT","SQL_STRING","SQL_HASH"]
+    Labels = ["HOST","PORT","SQL_STRING","SQL_HASH","PLAN_ID"]
     MetricType = "gauge"
     Name = "hanadb_sql_top_time_consumers"
     Unit = "mu"
@@ -230,7 +230,7 @@ LogLevel = "debug"
   [[Queries.Metrics]]
     Disabled = false
     Help = "Top statements time consumers. Number of total executions of the SQL Statement"
-    Labels = ["HOST","PORT","SQL_STRING","SQL_HASH"]
+    Labels = ["HOST","PORT","SQL_STRING","SQL_HASH","PLAN_ID"]
     MetricType = "gauge"
     Name = "hanadb_sql_top_time_consumers"
     Unit = "count"
