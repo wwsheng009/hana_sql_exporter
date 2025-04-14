@@ -1654,7 +1654,9 @@
           ],
           "displayMode": "table",
           "placement": "bottom",
-          "showLegend": true
+          "showLegend": true,
+          "sortBy": "Last *",
+          "sortDesc": true
         },
         "tooltip": {
           "mode": "multi",
@@ -1886,8 +1888,8 @@
         "showHeader": true,
         "sortBy": [
           {
-            "desc": false,
-            "displayName": "TOTAL EXECUTIONS"
+            "desc": true,
+            "displayName": "MAX EXEC TIME"
           }
         ]
       },
@@ -2946,7 +2948,7 @@
             "properties": [
               {
                 "id": "custom.width",
-                "value": 127
+                "value": 175
               }
             ]
           }
@@ -4070,6 +4072,24 @@
           "id": "merge",
           "options": {
             "reducers": []
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "database_name",
+                "operation_mode",
+                "tgt_host",
+                "usage",
+                "Value #A",
+                "Value #B",
+                "Value #C",
+                "Value #D",
+                "src_host"
+              ]
+            }
           }
         }
       ],
@@ -5387,11 +5407,20 @@
         "refresh": 2,
         "regex": "",
         "type": "query"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "eei9w3smdtds0e"
+        },
+        "filters": [],
+        "name": "Filters",
+        "type": "adhoc"
       }
     ]
   },
   "time": {
-    "from": "now-1h",
+    "from": "now-6h",
     "to": "now"
   },
   "timepicker": {
@@ -5410,6 +5439,6 @@
   "timezone": "",
   "title": "SAP HANA",
   "uid": "EcC4JDFWz2",
-  "version": 6,
+  "version": 8,
   "weekStart": ""
 }

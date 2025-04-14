@@ -11,18 +11,10 @@ GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 NC='\033[0m' # No Color
 
-
 # 显示帮助信息
 show_help() {
-    echo "用法: $0 [选项] [本地安装包路径]"
-    echo "选项:"
-    echo "  -h, --help     显示此帮助信息"
-    echo "  -l, --local    使用本地安装包安装"
-    echo "  -i, --interactive  交互式安装模式"
-    echo "示例:"
-    echo "  $0             在线下载并安装最新版本"
-    echo "  $0 -l /path/to/${VERSION}  使用本地安装包安装"
-    echo "  $0 -i          进入交互式安装模式"
+    echo "用法: $0"
+    echo "此脚本将引导您完成 HANA SQL Exporter 的安装过程"
     echo "密码配置命令:"
     echo "  $ ./hana_sql_exporter pw --tenant q01 --config ./<instance>.toml"
     echo "  $ ./hana_sql_exporter pw -t qj1 -c ./<instance>.toml"
@@ -37,7 +29,7 @@ interactive_menu() {
     echo "2. 使用最新安装包安装"
     echo "3. 使用本地安装包安装"
     echo "4. 退出"
-    echo -n "请选择安装方式 [1-3]: "
+    echo -n "请选择安装方式 [1-4]: "
     
     read -r choice
     case $choice in
@@ -98,60 +90,7 @@ check_system_requirements() {
     esac
 }
 
-# 解析命令行参数
-parse_arguments() {
-    local -n local_install=$1
-    local -n local_package=$2
-    local interactive_mode=true
-
-    # 如果没有参数，直接进入交互模式
-    if [ $# -le 2 ]; then
-        interactive_menu
-        exit 0
-    fi
-
-    while [[ $# -gt 2 ]]; do
-        case ${3} in
-            -h|--help)
-                show_help
-                exit 0
-                ;;
-            -l|--local)
-                local_install=true
-                interactive_mode=false
-                if [[ -n "${4}" && ! ${4} =~ ^- ]]; then
-                    local_package="${4}"
-                    shift
-                fi
-                ;;
-            -i|--interactive)
-                interactive_mode=true
-                ;;
-            -n|--non-interactive)
-                interactive_mode=false
-                ;;
-            *)
-                if [[ ${local_install} = true && -z "${local_package}" ]]; then
-                    local_package="${3}"
-                    interactive_mode=false
-                else
-                    echo "错误：未知参数 ${3}"
-                    show_help
-                    exit 1
-                fi
-                ;;
-        esac
-        shift
-    done
-
-    if [ "$interactive_mode" = true ]; then
-        interactive_menu
-        exit 0
-    fi
-}
-
 handle_fetch_local() {
-
     # 检查下载工具是否存在
     if command -v wget &> /dev/null; then
         DOWNLOADER="wget"
@@ -163,6 +102,7 @@ handle_fetch_local() {
         echo "CentOS/RHEL: sudo yum install wget 或 sudo yum install curl"
         return 1
     fi
+
     # 提示用户输入监控主机地址
     echo "请输入监控主机的IP地址或主机名:"
     read -r HOST
@@ -183,23 +123,18 @@ handle_fetch_local() {
     
     echo -e "${GREEN}安装目录创建成功${NC}"
 
-     # 使用可用的下载工具下载文件
+    # 使用可用的下载工具下载文件
     if [ "$DOWNLOADER" = "wget" ]; then
         wget http://${HOST}/n9e_install_files/${VERSION} -P ${INSTALL_DIR}/
     elif [ "$DOWNLOADER" = "curl" ]; then
         curl -L http://${HOST}/n9e_install_files/${VERSION} -o ${INSTALL_DIR}/${VERSION}
     fi
 }
+
 # 本地安装处理
 handle_local_install() {
     local package=$1
     
-    if [ -z "${package}" ]; then
-        echo "错误：本地安装模式需要指定安装包路径"
-        show_help
-        exit 1
-    fi
-
     if [ ! -f "${package}" ]; then
         echo "错误：找不到安装包文件：${package}"
         exit 1
@@ -237,7 +172,6 @@ install_files() {
     # 解压文件
     if ! tar xzf ${VERSION}; then
         echo "解压失败"
-        # rm -f ${VERSION}
         exit 1
     fi
 
@@ -255,9 +189,6 @@ install_files() {
     else
         echo "警告：未找到服务文件 hana_sql_exporter@.service"
     fi
-
-    # 清理临时文件
-    # rm -f ${VERSION}
 }
 
 # 配置系统服务
@@ -274,28 +205,16 @@ configure_service() {
 
 # 主函数
 main() {
-    local LOCAL_INSTALL=false
-    local LOCAL_PACKAGE=""
     # 检查系统要求
     ARCH=$(check_system_requirements)
     VERSION="hana_sql_exporter_linux_${ARCH}.tar.gz"
-
-    # 解析参数
-    parse_arguments LOCAL_INSTALL LOCAL_PACKAGE "$@"
-
-    # 根据安装模式处理
-    if [ "${LOCAL_INSTALL}" = true ]; then
-        handle_local_install "${LOCAL_PACKAGE}"
-    else
-        handle_fetch_latest "${ARCH}"
-    fi
-
-    # 安装文件
-    install_files
-
-    # 配置服务
-    configure_service
+    
+    # 显示帮助信息
+    show_help
+    
+    # 直接进入交互式菜单
+    interactive_menu
 }
 
 # 执行主函数
-main "$@"
+main
