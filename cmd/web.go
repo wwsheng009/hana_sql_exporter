@@ -547,23 +547,26 @@ func (config *Config) GetMetricData(mPos, tPos int) []MetricRecord {
 			}
 		}
 
+		// 自动添加unit标签会导致在grafana中无法合并多个指标，所以暂时不自动添加unit标签，如果需要单元信息，在grafana中手动添加
+		// 比如：同时进行指标的计数与求和，使用merge功能合并时，因为存在多个unit标签，无法合并在同一个table中显示。
+		
 		// 如果unit不为空，添加unit标签
-		if config.Metrics[mPos].Unit != "" {
-			for i := range md {
-				// 检查是否已存在unit标签
-				unitLabelExists := false
-				for _, label := range md[i].Labels {
-					if low(label) == "unit" {
-						unitLabelExists = true
-						break
-					}
-				}
-				if !unitLabelExists {
-					md[i].Labels = append(md[i].Labels, "unit")
-					md[i].LabelValues = append(md[i].LabelValues, low(config.Metrics[mPos].Unit))
-				}
-			}
-		}
+		// if config.Metrics[mPos].Unit != "" {
+		// 	for i := range md {
+		// 		// 检查是否已存在unit标签
+		// 		unitLabelExists := false
+		// 		for _, label := range md[i].Labels {
+		// 			if low(label) == "unit" {
+		// 				unitLabelExists = true
+		// 				break
+		// 			}
+		// 		}
+		// 		if !unitLabelExists {
+		// 			md[i].Labels = append(md[i].Labels, "unit")
+		// 			md[i].LabelValues = append(md[i].LabelValues, low(config.Metrics[mPos].Unit))
+		// 		}
+		// 	}
+		// }
 
 		allMetrics = append(allMetrics, md...)
 	}
