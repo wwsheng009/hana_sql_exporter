@@ -246,15 +246,19 @@ func (config *Config) Web() error {
 				
 				// 检查并合并指标
 				for _, m := range metrics {
-					if _, exists := existingMetrics[m.Name]; exists {
+					key := m.Name
+					for l := range m.Stats {
+						key += m.Stats[l].LabelValues[0]
+					}
+					if _, exists := existingMetrics[key]; exists {
 						log.WithFields(log.Fields{
 							"metric": m.Name,
-						}).Warn("跳过重复的指标名称")
+						}).Warn("跳过重复的指标")
 						continue
 					}
 					
 					allMetrics = append(allMetrics, m)
-					existingMetrics[m.Name] = struct{}{}
+					existingMetrics[key] = struct{}{}
 				}
 			}
 
