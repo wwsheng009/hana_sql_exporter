@@ -238,7 +238,7 @@ func (config *Config) Web() error {
 
 			// 等待两个收集过程完成
 			var allMetrics []MetricData
-			existingMetrics := make(map[string]struct{})
+			existingMetricLableValues := make(map[string]struct{})
 
 			// 处理收集到的指标数据
 			for i := 0; i < 2; i++ {
@@ -246,19 +246,30 @@ func (config *Config) Web() error {
 				
 				// 检查并合并指标
 				for _, m := range metrics {
-					key := m.Name
-					for l := range m.Stats {
-						key += m.Stats[l].LabelValues[0]
+					// 创建一个新的Stats切片用于存储非重复的统计数据
+					var uniqueStats []MetricRecord
+					for _, stat := range m.Stats {
+						key := m.Name + strings.Join(stat.LabelValues, "|")
+						if _, exists := existingMetricLableValues[key]; exists {
+							// 将labels和values组合成键值对形式
+							labelPairs := make([]string, len(stat.Labels))
+							for i := range stat.Labels {
+								labelPairs[i] = fmt.Sprintf("%s:%s", stat.Labels[i], stat.LabelValues[i])
+							}
+							log.WithFields(log.Fields{
+								"metric": m.Name,
+								"labels": strings.Join(labelPairs, ","),
+							}).Warn("跳过重复的指标行")
+							continue
+						}
+						uniqueStats = append(uniqueStats, stat)
+						existingMetricLableValues[key] = struct{}{}
 					}
-					if _, exists := existingMetrics[key]; exists {
-						log.WithFields(log.Fields{
-							"metric": m.Name,
-						}).Warn("跳过重复的指标")
-						continue
+					// 更新指标的Stats为去重后的结果
+					m.Stats = uniqueStats
+					if len(m.Stats) > 0 {
+						allMetrics = append(allMetrics, m)
 					}
-					
-					allMetrics = append(allMetrics, m)
-					existingMetrics[key] = struct{}{}
 				}
 			}
 
